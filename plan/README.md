@@ -2,7 +2,7 @@
 
 本目录记录实施任务与进度；页面、状态、管理后台及 API 的目标契约以 [项目 README](../README.md) 为准。变更已经发生后记录到 [changelog](../changelog/README.md)，不能把计划写成已交付能力。
 
-当前状态：阶段 0（工具链骨架）已完成，其余未实现。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile` 与 `compose.yaml` 的 `dev` 服务已落地；状态内核、HTTP 服务、管理 API、目标页面与部署镜像仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
+当前状态：阶段 0（工具链骨架）与阶段 1（状态内核）已完成。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务，以及 `src/mocksite/state/`、`src/mocksite/scenarios/` 已落地；HTTP 服务、管理 API、目标页面、后台界面与部署镜像仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
 
 ## 实施阶段
 
@@ -10,7 +10,7 @@
 
 ```mermaid
 graph LR
-  S0[0 工具链骨架] --> S1[1 状态内核]
+  S0[0 工具链骨架] --> S1[1 状态内核 ✅]
   S1 --> S2[2 双端口 HTTP]
   S2 --> S3[3 管理后台 SPA]
   S2 --> S4[4 列表与 CSR]
@@ -22,7 +22,7 @@ graph LR
 | 阶段 | 产出 | 关键约束 | 完成标准 |
 |---|---|---|---|
 | 0 工具链骨架 | `pyproject.toml`、`requirements*.txt`、`.gitignore`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml`（dev 服务） | Python `>=3.12,<3.13` 装进镜像，不在宿主建 venv；Python 依赖无锁文件，由 `uv pip compile --generate-hashes` 从 `pyproject.toml` 生成；pnpm 版本写入 `packageManager` 并由 pnpm 生成锁文件 | 容器内 `python -c "import mocksite"` 与 `pnpm install --frozen-lockfile` 均成功 |
-| 1 状态内核 | `src/mocksite/state/models.py`、`state/store.py`、`scenarios/registry.py` | 纯逻辑无 HTTP；校验、提交、版本递增、静态页重渲在同一次锁内完成 | `tests/unit` 通过；非法输入不改变状态也不推进版本 |
+| 1 状态内核 ✅ | `src/mocksite/state/{models,patch,store,errors}.py`、`scenarios/registry.py` | 纯逻辑无 HTTP；校验、提交、版本递增、静态页重渲在同一次锁内完成 | `tests/unit` 通过；非法输入不改变状态也不推进版本 |
 | 2 双端口 HTTP | `src/mocksite/app.py`、`cli.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
 | 3 管理后台 SPA | `web/admin/src/**`（复用已有 `features/{connection,state,scenarios,targets}` 目录） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
 | 4 列表与 CSR | `web/targets/{shared,react,vue}`、`site/static/vendor/`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
@@ -37,11 +37,18 @@ graph LR
 
 ### 阶段 1：状态内核
 
-- [ ] 定义状态模型：业务数据（商品、列表、`page_size`）、互斥呈现枚举、故障项、只读 `revision`。
-- [ ] 实现 `PATCH` 语义：对象递归合并、数组整体替换、`null` 与未知键报错。
-- [ ] 实现锁内的“校验 → 静态页渲染 → 提交 → 版本递增”，保证不存在状态已更新而静态页仍旧的窗口。
-- [ ] 实现场景注册表：每个场景从默认状态构造完整目标状态后一次性提交，场景之间不叠加。
-- [ ] 单元测试覆盖价格校验（`Decimal`、非负、有限、≤64 字符）、列表边界（0–100 行、页大小 1–100）、非法请求不推进版本。
+- [x] 定义状态模型：业务数据（商品、列表、`page_size`）、互斥呈现枚举、故障项、只读 `revision`。
+  `src/mocksite/state/models.py`：`State`/`BusinessData`/`Product`/`Item`/`Presentation`/`Faults`，全部 frozen + `extra="forbid"`；价格用 `Decimal` + 前后置校验（仅接受 `<digits>[.<digits>]` 字符串，拒绝浮点、指数、负号、非有限值、>64 字符），序列化为十进制字符串；`page_count` 派生不存储。
+- [x] 实现 `PATCH` 语义：对象递归合并、数组整体替换、`null` 与未知键报错。
+  `src/mocksite/state/patch.py`：`null`、任意深度的 `revision`、未知 section/key 全部拒绝并给出 `loc`；一次返回全部错误。
+- [x] 实现锁内的“校验 → 静态页渲染 → 提交 → 版本递增”，保证不存在状态已更新而静态页仍旧的窗口。
+  `src/mocksite/state/store.py`：`_commit_locked` 在同一把锁内完成“递增 revision → 渲染 → 同时替换 state 与 static_html”；渲染抛错时状态与页面都不前进（`test_renderer_failure_does_not_advance_state_or_page`、`test_failed_render_keeps_previous_page_content`）。
+- [x] 实现场景注册表：每个场景从默认状态构造完整目标状态后一次性提交，场景之间不叠加。
+  `src/mocksite/scenarios/registry.py`：13 个预设（`baseline`…`slow_site`），`PresetScenario.build()` 返回完整 `State`；`test_scenarios_do_not_stack` 覆盖 `outage → price_change` 清除故障。
+- [x] 单元测试覆盖价格校验（`Decimal`、非负、有限、≤64 字符）、列表边界（0–100 行、页大小 1–100）、非法请求不推进版本。
+  `tests/unit/test_state_models.py`、`test_state_patch.py`、`test_state_store.py`、`test_scenarios.py`；容器内 `pytest -q` → `171 passed`。
+
+**遗留到阶段 2**：静态页渲染器目前是注入的 `Renderer`（默认返回空串），真实 Jinja2 模板在实现 `/static/product` 时提供；故障注入的消费方（站点路由）也属于阶段 2。
 
 ### 阶段 2：双端口 HTTP
 
@@ -50,7 +57,6 @@ graph LR
 - [ ] 站点端口实现 `/static/product`（预渲染）、`/ssr/product`、`/api/data`、`/health`，全部带 `X-Mocksite-Revision` 与 `no-store`。
 - [ ] 故障注入只作用于站点业务路由，不影响管理服务、`/health` 与本地资产。
 - [ ] 请求体上限 64 KiB、只接受 `application/json`、日志不输出 Authorization 与请求体。
-
 ### 阶段 3：管理后台 SPA
 
 - [ ] 连接与认证：token 输入、连接状态、退出；刷新即清除，不写 localStorage/URL。
@@ -58,14 +64,13 @@ graph LR
 - [ ] 场景列表（含影响范围）、应用预设、恢复默认；应用前提示覆盖当前状态，成功后展示前后版本。
 - [ ] 目标页面入口：区分宿主预览地址与平台采集地址，提供 CSS/XPath 复制。
 - [ ] 操作反馈：提交中禁用、字段错误、401 失效、网络失败；失败不伪报成功。
-
 ### 阶段 4：列表与 CSR
 
 - [ ] 落地本地 React/Vue UMD 资产与许可证/完整性清单（可复用 Agent `tests/fixtures/static/vendor/` 的版本与校验值，资产随站点分发）。
 - [ ] React/Vue 列表页：加载成功后才设 `data-ready="true"` 并写入 `data-revision`，失败显示错误且不设就绪标记。
+  `site/static/assets/{list,react-list,vue-list}.js` + `site/templates/list.html`：`#app` 由服务端渲染为空壳（不含任何行），页面脚本 fetch `/api/data` 后才挂载；React 在 `createRoot().render()` 后、Vue 在 `nextTick` 后调用 `markReady()`。失败时写入 `#status[data-state=error]` 且不设 `data-ready`。
 - [ ] `/dynamic/deals`：首屏一页、点击追加、加载中禁用、末页隐藏按钮；空列表也进入就绪状态。
 - [ ] 列表相关场景：`item_price_change`、`empty_list`、`field_rename`、`duplicate_rows`、`pagination_grow`。
-
 ### 阶段 5：容器与平台联调
 
 - [ ] 生产镜像（非 root、只读根文件系统、无数据库与外部存储）与基础 `compose.yaml`；仅发布 9000，9001 走控制网络。
@@ -81,15 +86,10 @@ graph LR
 - [ ] 单页数据覆盖，显式出现在状态中，reset 清除。
 - [ ] `/redirect-private?target=` 与 `/private-resource`，只接受固定枚举。
 
-## 已知前置阻塞
-
-1. **Agent 出口例外硬编码。** `WebMonitor-Agent/src/webmonitor/security/egress.py:29` 只放行 `http://fixture:8000`，`config.py:95` 的校验器把该值钉死，`deploy/egress/squid.smoke.conf` 与 `unbound.smoke.conf` 也只允许 `fixture` 域名与 8000 端口。复制 smoke overlay 无法放行 `http://mocksite:9000`。阶段 5 之前必须把例外参数化，并在 Squid ACL 与 DNS 转发中同步加精确条目，同时禁止到达 9001。
-2. **选择器契约要求表格结构。** README §3.3 的 `#inventory tbody tr.item` 隐含 `<table>`，而 Agent 现有 `tests/fixtures/site.py` 使用 `<ul>`。新站点必须渲染 `<table>`，否则文档中的 XPath 在真实 DOM 上不成立，legacy 的 Selenium 等待会直接超时。
-
 ## P1：管理后台与商品页面
 
-- [ ] 在 Docker 开发环境中初始化 `web/package.json`，固定 pnpm 版本并生成 `pnpm-lock.yaml`；提供后台构建入口，部署构建采用冻结锁文件安装。
-- [ ] 实现单进程状态管理、输入校验、原子提交、版本递增与 reset。
+- [x] 在 Docker 开发环境中初始化 `web/package.json`，固定 pnpm 版本并生成 `pnpm-lock.yaml`；提供后台构建入口，部署构建采用冻结锁文件安装。
+- [x] 实现单进程状态管理、输入校验、原子提交、版本递增与 reset。见阶段 1。
 - [ ] 实现独立管理端口、Bearer 认证和管理 API。
 - [ ] 实现 static/SSR 商品页、稳定选择器与响应版本标记。
 - [ ] 实现商品价格变化、空文本、节点缺失、结构破坏、500 与延迟场景。

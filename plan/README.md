@@ -2,7 +2,7 @@
 
 本目录记录实施任务与进度；页面、状态、管理后台及 API 的目标契约以 [项目 README](../README.md) 为准。变更已经发生后记录到 [changelog](../changelog/README.md)，不能把计划写成已交付能力。
 
-当前状态：阶段 0（工具链骨架）与阶段 1（状态内核）已完成。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务，以及 `src/mocksite/state/`、`src/mocksite/scenarios/` 已落地；HTTP 服务、管理 API、目标页面、后台界面与部署镜像仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
+当前状态：阶段 0（工具链骨架）、阶段 1（状态内核）与阶段 2（双端口 HTTP）已完成。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；列表页、后台界面、部署镜像与平台联调仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
 
 ## 实施阶段
 
@@ -23,7 +23,7 @@ graph LR
 |---|---|---|---|
 | 0 工具链骨架 | `pyproject.toml`、`requirements*.txt`、`.gitignore`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml`（dev 服务） | Python `>=3.12,<3.13` 装进镜像，不在宿主建 venv；Python 依赖无锁文件，由 `uv pip compile --generate-hashes` 从 `pyproject.toml` 生成；pnpm 版本写入 `packageManager` 并由 pnpm 生成锁文件 | 容器内 `python -c "import mocksite"` 与 `pnpm install --frozen-lockfile` 均成功 |
 | 1 状态内核 ✅ | `src/mocksite/state/{models,patch,store,errors}.py`、`scenarios/registry.py` | 纯逻辑无 HTTP；校验、提交、版本递增、静态页重渲在同一次锁内完成 | `tests/unit` 通过；非法输入不改变状态也不推进版本 |
-| 2 双端口 HTTP | `src/mocksite/app.py`、`cli.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
+| 2 双端口 HTTP ✅ | `src/mocksite/cli.py`、`config.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
 | 3 管理后台 SPA | `web/admin/src/**`（复用已有 `features/{connection,state,scenarios,targets}` 目录） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
 | 4 列表与 CSR | `web/targets/{shared,react,vue}`、`site/static/vendor/`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
 | 5 容器与平台联调 | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`scripts/control.py`、`integrations/{agent,legacy}` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
@@ -52,11 +52,19 @@ graph LR
 
 ### 阶段 2：双端口 HTTP
 
-- [ ] `cli.py` 内并发运行两个 `uvicorn.Server`，共享同一 `StateStore`；不启用多进程。
-- [ ] 管理端口实现 Bearer 认证（`MOCKSITE_TOKEN` 未配置或不足 32 个非空白字符时拒绝启动）、`GET/PATCH /_admin/state`、`POST /_admin/reset`、`GET /_admin/scenarios`、`POST /_admin/scenario/{name}`。
-- [ ] 站点端口实现 `/static/product`（预渲染）、`/ssr/product`、`/api/data`、`/health`，全部带 `X-Mocksite-Revision` 与 `no-store`。
-- [ ] 故障注入只作用于站点业务路由，不影响管理服务、`/health` 与本地资产。
-- [ ] 请求体上限 64 KiB、只接受 `application/json`、日志不输出 Authorization 与请求体。
+- [x] `cli.py` 内并发运行两个 `uvicorn.Server`，共享同一 `StateStore`；不启用多进程。
+  `src/mocksite/cli.py`：`asyncio.wait(FIRST_COMPLETED)` 同时托管两个 server，任一退出即取消另一个；只有站点 server 安装信号处理器，`SIGTERM` 实测退出码 0 且两个监听器都打印 `Shutting down`。`mocksite --check` 仅校验配置不绑定端口。`pyproject.toml` 增加 `mocksite` console script。
+- [x] 管理端口实现 Bearer 认证（`MOCKSITE_TOKEN` 未配置或不足 32 个非空白字符时拒绝启动）、`GET/PATCH /_admin/state`、`POST /_admin/reset`、`GET /_admin/scenarios`、`POST /_admin/scenario/{name}`。
+  `src/mocksite/admin/auth.py` 用 `secrets.compare_digest` 常量时间比较，401 不返回状态内容；`src/mocksite/admin/api.py` 实现五个路由，`reset` 与场景应用返回 `before`/`after`；`src/mocksite/config.py` 在启动时拒绝弱 token（`Settings.token` 设 `repr=False`，避免泄漏到日志与 traceback）。
+- [x] 站点端口实现 `/static/product`（预渲染）、`/ssr/product`、`/api/data`、`/health`，全部带 `X-Mocksite-Revision` 与 `no-store`。
+  `src/mocksite/site/routes.py` + `site/render.py` + `site/templates/product.html`：`/static/product` 直接返回提交时预渲染的 HTML，`/ssr/product` 每次按快照渲染；`/api/data` 附带 `revision` 与派生的 `page_count`；`/health` 返回 `{"status":"ok"}`。
+- [x] 故障注入只作用于站点业务路由，不影响管理服务、`/health` 与本地资产。
+  `_faults` 中间件放行 `/health`；`outage` 优先于 `delay_ms`（`test_outage_takes_precedence_over_delay`）；`test_admin_survives_site_outage`、`test_recovery_after_outage_restores_pages` 覆盖恢复路径。
+- [x] 请求体上限 64 KiB、只接受 `application/json`、日志不输出 Authorization 与请求体。
+  流式读取时累计字节数并在超限时返回 413（不信任 `Content-Length`），非 `application/json` 返回 415，空体与坏 JSON 返回 400；日志只记方法、路由模板、状态码与 revision（`test_admin_logs_never_contain_token_or_body`）。
+
+**尚未覆盖**：列表页与 CSR 目标页属阶段 4；后台界面属阶段 3；`tests/browser/` 为空。
+
 ### 阶段 3：管理后台 SPA
 
 - [ ] 连接与认证：token 输入、连接状态、退出；刷新即清除，不写 localStorage/URL。
@@ -90,9 +98,9 @@ graph LR
 
 - [x] 在 Docker 开发环境中初始化 `web/package.json`，固定 pnpm 版本并生成 `pnpm-lock.yaml`；提供后台构建入口，部署构建采用冻结锁文件安装。
 - [x] 实现单进程状态管理、输入校验、原子提交、版本递增与 reset。见阶段 1。
-- [ ] 实现独立管理端口、Bearer 认证和管理 API。
-- [ ] 实现 static/SSR 商品页、稳定选择器与响应版本标记。
-- [ ] 实现商品价格变化、空文本、节点缺失、结构破坏、500 与延迟场景。
+- [x] 实现独立管理端口、Bearer 认证和管理 API。见阶段 2。
+- [x] 实现 static/SSR 商品页、稳定选择器与响应版本标记。见阶段 2。
+- [x] 实现商品价格变化、空文本、节点缺失、结构破坏、500 与延迟场景。见阶段 2。
 - [ ] 实现后台认证、状态总览、商品编辑、场景控制及操作反馈。
 - [ ] 用真实浏览器完成“默认价格 → 修改 → 恢复”，验证非法写入不改变状态，目标站 500 时仍能通过后台恢复。
 

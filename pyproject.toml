@@ -31,6 +31,10 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mocksite"]
+include = ["src/mocksite/site/templates/*.html"]
+
+[project.scripts]
+mocksite = "mocksite.cli:main"
 
 [tool.ruff]
 target-version = "py312"

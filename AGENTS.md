@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Controllable, reproducible target website ("mocksite") used to develop, regression-test and demo **WebMonitor-Agent** and legacy **WebMonitor**. mocksite owns *inputs* (pages, data, deterministic faults); the monitoring platforms own collection, extraction, diffing, scheduling and notification.
+A controllable, reproducible mock website for developing, regression-testing and demoing **any** content-monitoring or scraping system. It is deliberately platform-agnostic: stable CSS and XPath selectors, state driven over HTTP. mocksite owns *inputs* (pages, data, deterministic faults); the consuming system owns collection, extraction, diffing, scheduling and notification.
 
 > **Status: stages 0–4 done.** Toolchain, state kernel, two-port HTTP service, admin SPA, and all target pages (product, React/Vue lists, paginated deals) exist. Still missing: deployment image and platform integration (stage 5). Never describe planned behavior as implemented.
 
@@ -44,7 +44,6 @@ read path:  immutable state snapshot + X-Mocksite-Revision + Cache-Control: no-s
 | `web/targets/` | Vendored React/Vue target-page assets (`shared`, `react`, `vue`) — outside the Vite build |
 | `deploy/` | `dev.Dockerfile` (toolchain only); deployment image is stage 5 |
 | `scripts/` | `check_admin_ui.py` (29 checks) and `check_target_pages.py` (32 checks) — real-Chromium acceptance. Planned: `control.py` wrapper for `/_admin/*` |
-| `integrations/{agent,legacy}/` | Planned per-platform overlays/config for egress + origin exceptions |
 | `plan/` | Stage 0–6 task checklists, P1–P4 acceptance groups, known blockers |
 | `changelog/` | Dated records of work actually done |
 
@@ -130,7 +129,7 @@ Docker stays authoritative for runtime/tests; the conda env exists for editing, 
 - **Running the service today:** `docker compose run --rm --entrypoint mocksite -e MOCKSITE_TOKEN=<32+ chars> -p 127.0.0.1:9000:9000 -p 127.0.0.1:9001:9001 dev`. `mocksite --check` validates config without binding ports; exit code 2 means bad config.
 - **Admin UI needs a build:** `MOCKSITE_ADMIN_DIST` (default `web/dist`) must contain `index.html` + `assets/`, otherwise `/` returns 503 `admin_build_missing`. Build it with `pnpm build` inside the dev container. `MOCKSITE_COLLECT_ORIGIN` / `MOCKSITE_PUBLIC_ORIGIN` control the two URLs shown in the admin's target-page panel — never assume the container hostname is browser-reachable.
 - **No deployment image yet**; base compose intentionally publishes no ports. When adding it: non-root, read-only rootfs, no database/external storage.
-- **Two known blockers before platform integration** (`plan/README.md`): WebMonitor-Agent egress hardcodes `http://fixture:8000` (`security/egress.py`, `config.py`, Squid/unbound smoke configs), so `http://mocksite:9000` is not reachable without a precise, parameterized exception; and selectors demand `<table>` while the Agent fixture uses `<ul>`.
+- **Egress exceptions are the consumer's job, not this repo's.** mocksite only promises to listen on 9000 (site) and 9001 (admin) and to keep the admin port unpublished. Any allowlist entry for a monitoring platform's egress proxy belongs to that platform's deployment config; do not add per-platform integration folders here.
 
 ## Testing & QA
 

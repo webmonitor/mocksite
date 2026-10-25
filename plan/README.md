@@ -26,7 +26,7 @@ graph LR
 | 2 双端口 HTTP ✅ | `src/mocksite/cli.py`、`config.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
 | 3 管理后台 SPA ✅ | `web/admin/src/**`（`lib/api.ts`、`components/ui.tsx`、`features/{connection,state,scenarios,targets}`） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
 | 4 列表与 CSR ✅ | `site/static/{vendor,assets}/`、`site/templates/{list,deals}.html`、`/react/list`、`/vue/list`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
-| 5 容器与平台联调 | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`scripts/control.py`、`integrations/{agent,legacy}` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
+| 5 容器与运行 | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`scripts/control.py` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
 | 6 P4 扩展 | `/flaky`、`/slow`、单页覆盖、安全探针 | 确定性序列与计数，reset 清零；探针只接受固定枚举 | 相同序列产生相同响应；受限地址未被访问（出口或探针计数证据） |
 
 ### 阶段 0：工具链骨架
@@ -97,11 +97,11 @@ graph LR
 
 **实现说明**：`/static/assets` 与 `/static/vendor` 作为挂载点，`/static/product` 仍是独立路由（早期把整个 `/static` 挂载导致该页 404）；故障中间件只豁免这两个资源前缀，`/static/product` 在 `outage` 下仍返回 500（`test_assets_are_not_business_pages`）。
 
-### 阶段 5：容器与平台联调
+### 阶段 5：容器与运行文档
 
 - [ ] 生产镜像（非 root、只读根文件系统、无数据库与外部存储）与基础 `compose.yaml`；仅发布 9000，9001 走控制网络。
 - [ ] `compose.dev.yaml` 映射 `127.0.0.1:9001:9001` 供浏览器打开后台；控制脚本封装 `/_admin/*` 调用。
-- [ ] 为 Agent 增加精确 origin 例外（见下文阻塞 1），保持管理端口对采集出口不可达；legacy 单独确认网络与安全限制。
+- [ ] 记录采集方接入所需的两条地址（采集地址/预览地址）与端口边界，保持管理端口对采集出口不可达。
 - [ ] 运行文档：构建、启动、后台访问与认证、管理请求、关闭，并验证宿主与容器内两条访问路径。
 - [ ] 完成 README §5.1 全部后台功能的浏览器验收并保留证据。
 
@@ -114,8 +114,8 @@ graph LR
 
 ## 已知前置阻塞
 
-1. **Agent 出口例外硬编码（仍未解决，阻塞阶段 5）。** `WebMonitor-Agent/src/webmonitor/security/egress.py:29` 只放行 `http://fixture:8000`，`config.py:95` 的校验器把该值钉死，`deploy/egress/squid.smoke.conf` 与 `unbound.smoke.conf` 也只允许 `fixture` 域名与 8000 端口。复制 smoke overlay 无法放行 `http://mocksite:9000`。阶段 5 之前必须把例外参数化，并在 Squid ACL 与 DNS 转发中同步加精确条目，同时禁止到达 9001。`integrations/agent/` 存放 mocksite 侧的接入配置，待 Agent 侧参数化后对接。
-2. ~~**选择器契约要求表格结构。**~~ 已在阶段 4 解决：`/react/list`、`/vue/list`、`/dynamic/deals` 均渲染真实 `<table>`，`#inventory tbody tr.item` 与 `td.price` 在真实 DOM 上成立。Agent 现有 `tests/fixtures/site.py` 仍使用 `<ul>`，但那是它自己的 smoke fixture，不在本轮替换范围内。
+1. ~~**Agent 出口例外硬编码。**~~ 不属于本仓库职责：mocksite 只承诺监听 9000（页面）与 9001（管理）并保持管理端口不对外发布；采集方的出口放行属于其自身部署配置，本仓库不再维护按平台划分的接入目录。
+2. ~~**选择器契约要求表格结构。**~~ 已在阶段 4 解决：`/react/list`、`/vue/list`、`/dynamic/deals` 均渲染真实 `<table>`，`#inventory tbody tr.item` 与 `td.price` 在真实 DOM 上成立。
 
 ## P1：管理后台与商品页面
 
@@ -138,14 +138,14 @@ graph LR
 - [x] 提供 CSS/XPath 复制，区分宿主预览地址与平台采集地址。见阶段 3 的 `/_admin/meta` 与 `TargetPanel`。
 - [x] 验证离线渲染、完整有序分页及后台修改后的实际页面内容。见 `scripts/check_target_pages.py`（32 项，含“无外部请求”断言）。
 
-## P3：容器与平台联调
+## P3：容器与运行
 
 依赖 P1、P2；本阶段通过后才算首轮交付完成。
 
 - [ ] 提供 Dockerfile、基础 Compose、本地开发 overlay 与控制脚本。
 - [ ] 提供可执行的启动、后台认证、管理请求和关闭文档。
-- [ ] 为 Agent 配置精确 origin、DNS 和出口例外，保持管理端口不可被采集出口访问。
-- [ ] 分别验证 Agent 与 legacy 的基线、变化、故障和恢复行为。
+- [ ] 在运行文档中说明采集方如何接入（地址、端口、token），出口放行由采集方自行配置。
+- [ ] 用任意 HTTP 与无头浏览器采集方式分别验证基线、变化、故障和恢复行为。
 - [ ] 完成 README §5.1 全部后台功能的浏览器验收，包括错误凭据、非法输入、请求失败和重置。
 - [ ] 记录执行环境、操作步骤、预期结果及实际证据；邮件验证仅在显式启用时执行。
 

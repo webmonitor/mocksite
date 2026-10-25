@@ -2,11 +2,11 @@
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
-为 [WebMonitor-Agent](https://github.com/webmonitor/WebMonitor-Agent) 和 [WebMonitor](https://github.com/webmonitor/WebMonitor) 提供可控制、可复现的监控目标网站，用于开发、回归验证和演示。
+一个通用、可控制、可复现的 mock 网站，供任何内容监控/采集系统做开发、回归验证和演示。它不绑定特定平台：页面提供稳定的 CSS 与 XPath 选择器，状态通过 HTTP API 与浏览器后台控制。
 
 开发者先让监控平台采集正常页面、建立基线，再通过管理 API 改变价格、列表、页面结构或响应行为，检查平台实际提取了什么、是否正确识别变化，以及失败后能否恢复。
 
-> **当前状态：实施中，尚无可用站点。** 工具链骨架（阶段 0）已落地：Python 包清单、前端清单与锁文件、开发容器。页面、状态、管理后台与管理 API 仍为目标契约，不代表当前可用；已完成范围见 [变更记录](changelog/README.md)。
+> **当前状态：阶段 0–4 已完成，站点可用。** 商品页（static/SSR）、React/Vue 列表、动态分页页、JSON 数据、健康检查、管理 API 与管理后台均已落地，可离线运行且不依赖外部 CDN。部署镜像与扩展故障（阶段 5–6）仍未实现；已完成范围见 [变更记录](changelog/README.md)。
 
 文档入口：[交付计划与任务进度](plan/README.md) · [变更记录](changelog/README.md)。本 README 定义目标契约，`plan/` 跟踪待实施任务，`changelog/` 记录已经发生的变更。
 
@@ -23,11 +23,11 @@ mocksite 负责产生受控输入，并给出可核对的页面状态；监控�
 | 故障期间及恢复后平台如何表现 | 可显式启停的 500、延迟和确定性失败序列 |
 | 出口限制是否生效 | 固定的私网重定向和子资源探针 |
 
-首要接入目标是 WebMonitor-Agent；页面同时提供 CSS 与 XPath 选择器，供 legacy WebMonitor 验证其已有能力。两平台的错误码、重试策略和告警能力分别验收，不假定完全一致。
+任何采集方都可以接入：页面同时提供 CSS 与 XPath 选择器，便于不同技术栈（HTTP 抓取、无头浏览器、Selenium 等）验证各自的提取与等待逻辑。各平台的错误码、重试策略和告警能力由其自身契约决定，mocksite 只负责输入可复现。
 
 本项目不实现监控引擎、邮件发送、多用户与权限管理、任意脚本执行或真实网站的反爬绕过。**首轮交付必须包含可用的管理后台和管理 API**：日常开发与演示通过浏览器操作，自动化验证通过同一套 API 控制。
 
-WebMonitor-Agent 已有 `tests/fixtures/site.py`，服务于自身的 smoke 验证。mocksite 是独立的开发目标站；先复用其稳定数据与选择器约定，不在首轮交付中替换既有 fixture。
+mocksite 不替代任何采集方自带的 smoke fixture，两者互不依赖：这里的页面与数据契约面向通用验证，使用方按需接入即可。
 
 ## 2. 使用流程
 
@@ -203,9 +203,9 @@ PATCH 中对象字段递归合并，数组整体替换；`null` 不表示删除�
 
 服务端模板生成静态及 SSR HTML；React/Vue 使用本地固定版本资产，动态列表保持最小实现。管理后台使用本地 React 资产构建表单与场景控制界面，通过同源 API 读写状态，不引入独立前端服务。容器以非 root 用户运行，支持只读根文件系统，不需要数据库或外部存储。
 
-前端统一使用 **pnpm** 管理依赖和执行构建。`web/` 共用一个 `package.json` 和一个 `pnpm-lock.yaml`，覆盖管理后台及 React/Vue 目标页；不使用 `package-lock.json` 或 Yarn 锁文件。`package.json` 的 `packageManager` 字段已固定 pnpm `12.15.0`，锁文件由 pnpm 生成并提交。依赖安装和前端构建均在 Docker 内执行，部署构建使用冻结锁文件安装，确保使用已提交的依赖版本。当前只有后台构建入口（`web/admin`），界面与目标页尚未实现。
+前端统一使用 **pnpm** 管理依赖和执行构建。`web/` 共用一个 `package.json` 和一个 `pnpm-lock.yaml`，覆盖管理后台及 React/Vue 目标页；不使用 `package-lock.json` 或 Yarn 锁文件。`package.json` 的 `packageManager` 字段已固定 pnpm `12.15.0`，锁文件由 pnpm 生成并提交。依赖安装和前端构建均在 Docker 内执行，部署构建使用冻结锁文件安装，确保使用已提交的依赖版本。构建入口为 `web/admin`（管理后台）；目标页使用随站点分发的 UMD 资产，不参与该构建。
 
-Python 依赖同样在 Docker 内安装。宿主侧可选使用工作区共用的 conda 环境（`../.github/environment.yml`，环境名 `webmonitor`，Python 3.12），用于编辑、lint 与快速跑测试；它与 `WebMonitor-Agent` 共用同一套版本，`pyproject.toml` 的 pin 需与该文件保持一致，容器构建仍以 `pyproject.toml` 为准。
+Python 依赖同样在 Docker 内安装。宿主侧可选使用工作区共用的 conda 环境（`../.github/environment.yml`，环境名 `webmonitor`，Python 3.12），用于编辑、lint 与快速跑测试；`pyproject.toml` 的 pin 需与 `../.github/requirements-workspace.txt` 保持一致，容器构建仍以 `pyproject.toml` 为准。
 
 ### 6.2 网络边界
 
@@ -218,15 +218,17 @@ Python 依赖同样在 Docker 内安装。宿主侧可选使用工作区共用�
 
 端口分离不等于网络隔离。部署时需限制控制网络的参与者，并确保采集出口不能访问管理端口；token 仅用于管理后台和控制脚本，不提供给被采集页面或模型上下文。
 
-### 6.3 接入监控平台
+### 6.3 接入采集方
 
-WebMonitor-Agent 的采集流量经过 egress，默认拒绝私网地址。现有 smoke overlay 为 `http://fixture:8000` 配置了精确例外；该配置不会自动允许 `http://mocksite:9000`。
+mocksite 只负责在 `9000`（页面）与 `9001`（管理）上提供内容与状态控制，不关心采集方如何出网。若采集方自带出口代理或私网限制，放行 mocksite 的精确主机与端口属于该采集方自己的部署配置，不在本仓库维护；本仓库不提供任何按平台划分的接入目录。
 
-接入 mocksite 需要独立的开发/测试 overlay，配套处理目标 origin 校验、DNS 解析和出口 ACL，只允许 mocksite 的指定主机与页面端口。禁止放行整个私网、允许任意端口或让 worker 绕过 egress 直连。安全探针的重定向目的地和私网子资源仍须被拒绝。
+采集方需要知道的三件事：
 
-legacy WebMonitor 使用同一页面 URL 与 XPath，但需单独确认其容器网络和实际安全限制。不能把 Agent 的出口保障当作 legacy 已具备的能力。
+- 采集地址：容器网络内的 `http://mocksite:9000`（或部署时实际的主机名），由 `MOCKSITE_COLLECT_ORIGIN` 决定后台展示值；
+- 预览地址：开发者浏览器可打开的地址，由 `MOCKSITE_PUBLIC_ORIGIN` 决定；
+- 管理端口不得暴露给被采集页面或采集出口，token 只交给后台与控制脚本。
 
-`compose.yaml` 目前只包含开发工具链服务，不发布端口，也不是可运行的站点。运行方式阶段交付时，必须同时提供实际可执行的构建、启动、后台访问与认证、管理请求和关闭步骤，并验证宿主访问与容器内访问两条路径。
+`compose.yaml` 目前只包含开发工具链服务，不发布端口。生产镜像、基础 Compose 与开发 overlay 属阶段 5；届时必须同时提供可执行的构建、启动、后台访问与认证、管理请求和关闭步骤。
 
 ## 7. 交付顺序与验收
 

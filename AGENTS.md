@@ -2,7 +2,7 @@
 
 A controllable, reproducible mock website for developing, regression-testing and demoing **any** content-monitoring or scraping system. It is deliberately platform-agnostic: stable CSS and XPath selectors, state driven over HTTP. mocksite owns *inputs* (pages, data, deterministic faults); the consuming system owns collection, extraction, diffing, scheduling and notification.
 
-> **Status: stages 0–4 done.** Toolchain, state kernel, two-port HTTP service, admin SPA, and all target pages (product, React/Vue lists, paginated deals) exist. Still missing: deployment image and platform integration (stage 5). Never describe planned behavior as implemented.
+> **Status: stages 0–5 done.** Toolchain, state kernel, two-port HTTP service, admin SPA, all target pages, a production image and Compose services exist. Stage 6 (extra faults: `/flaky`, `/slow`, per-page overrides, private-network probes) is not implemented. Never describe planned behavior as implemented.
 
 Docs are Chinese (`README.md`, `plan/README.md`, `changelog/`); write doc edits in Chinese and keep the three in sync.
 
@@ -42,8 +42,9 @@ read path:  immutable state snapshot + X-Mocksite-Revision + Cache-Control: no-s
 | `tests/unit/`, `tests/integration/` | Only pytest-discovered dirs. `tests/browser/` exists but is **not** in `testpaths` |
 | `web/admin/` | **Implemented** admin SPA: `src/lib/api.ts` (typed client, in-memory token), `src/components/ui.tsx`, `src/features/{connection,state,scenarios,targets}`, `src/App.tsx`, `src/styles.css` |
 | `web/targets/` | Vendored React/Vue target-page assets (`shared`, `react`, `vue`) — outside the Vite build |
-| `deploy/` | `dev.Dockerfile` (toolchain only); deployment image is stage 5 |
-| `scripts/` | `check_admin_ui.py` (29 checks) and `check_target_pages.py` (32 checks) — real-Chromium acceptance. Planned: `control.py` wrapper for `/_admin/*` |
+| `deploy/` | `Dockerfile` (production: non-root UID 10001, read-only rootfs friendly, builds the admin bundle in a Node stage) and `dev.Dockerfile` (toolchain) |
+| `scripts/` | `control.py` (CLI over `/_admin/*`), `check_admin_ui.py` (29 checks) and `check_target_pages.py` (32 checks) — real-Chromium acceptance |
+| `compose.yaml`, `compose.dev.yaml`, `.env.example` | Runnable `site` service (publishes only 9000) + `dev` tools profile; overlay adds 9001 for local browsers |
 | `plan/` | Stage 0–6 task checklists, P1–P4 acceptance groups, known blockers |
 | `changelog/` | Dated records of work actually done |
 
@@ -52,7 +53,7 @@ read path:  immutable state snapshot + X-Mocksite-Revision + Cache-Control: no-s
 Everything runs in Docker; no host `.venv`, no host `pnpm install`.
 
 ```sh
-# dev container (repo root, mounted at /workspace; publishes no ports)
+# dev container (repo root, mounted at /workspace; publishes no ports; profile-gated)
 docker compose build dev
 docker compose run --rm dev python -c "import mocksite"
 docker compose run --rm dev pytest -q
@@ -64,16 +65,17 @@ docker compose run --rm dev sh -lc 'cd web && pnpm typecheck'  # tsc --noEmit
 docker compose run --rm dev sh -lc 'cd web && pnpm build'      # -> web/dist
 ```
 
-Browser acceptance of the admin UI (needs the built bundle and a running stack):
+Browser acceptance (real Chromium against the running stack; the image builds the admin bundle itself):
 
 ```sh
-docker compose run --rm --entrypoint mocksite -d --name mocksite-ui \
-  -p 127.0.0.1:19000:9000 -p 127.0.0.1:19001:9001 --no-deps \
-  -e MOCKSITE_TOKEN=<32+ chars> -e MOCKSITE_ADMIN_DIST=/workspace/web/dist dev
-conda run -n webmonitor python scripts/check_admin_ui.py --token <same token>
-conda run -n webmonitor python scripts/check_target_pages.py --token <same token>
-docker rm -f mocksite-ui
+cp .env.example .env    # set MOCKSITE_TOKEN
+docker compose -f compose.yaml -f compose.dev.yaml up --build -d --wait
+conda run -n webmonitor python scripts/check_admin_ui.py      # 29 checks
+conda run -n webmonitor python scripts/check_target_pages.py  # 32 checks
+docker compose -f compose.yaml -f compose.dev.yaml down -v
 ```
+
+Both scripts read the token from `$MOCKSITE_TOKEN` and default to ports 9000/9001.
 
 `pnpm dev` binds `127.0.0.1` *inside* the container, and `compose.yaml` publishes no ports, so reaching it from the host needs both `--host 0.0.0.0` and an explicit mapping (`-p 127.0.0.1:5174:5173`); the planned `compose.dev.yaml` will map admin `9001`.
 
@@ -126,8 +128,10 @@ Docker stays authoritative for runtime/tests; the conda env exists for editing, 
 - **Python 3.12 / Node 22 / pnpm 12.15.0** exactly; versions are pinned in `pyproject.toml`, `web/package.json` (`packageManager`), and the dev image.
 - **pnpm only** — one `web/package.json` + committed `web/pnpm-lock.yaml` for admin *and* target pages. Never add `package-lock.json`, Yarn, or a second frontend workspace.
 - **Docker-first**; host needs only Docker + Compose. Frontend install/build and Python dependency install happen in the container.
-- **Running the service today:** `docker compose run --rm --entrypoint mocksite -e MOCKSITE_TOKEN=<32+ chars> -p 127.0.0.1:9000:9000 -p 127.0.0.1:9001:9001 dev`. `mocksite --check` validates config without binding ports; exit code 2 means bad config.
-- **Admin UI needs a build:** `MOCKSITE_ADMIN_DIST` (default `web/dist`) must contain `index.html` + `assets/`, otherwise `/` returns 503 `admin_build_missing`. Build it with `pnpm build` inside the dev container. `MOCKSITE_COLLECT_ORIGIN` / `MOCKSITE_PUBLIC_ORIGIN` control the two URLs shown in the admin's target-page panel — never assume the container hostname is browser-reachable.
+- **Running the service:** `cp .env.example .env` (set `MOCKSITE_TOKEN`), then `docker compose up --build -d --wait`. Only `127.0.0.1:9000` is published. For the admin UI add `-f compose.dev.yaml`, which maps `127.0.0.1:9001`. `docker compose down` stops it; state is in memory, so a restart returns to defaults. `mocksite --check` validates config without binding ports (exit code 2 = bad config).
+- **Admin UI needs a build:** `MOCKSITE_ADMIN_DIST` (default `web/dist`, `/app/admin` in the image) must contain `index.html` + `assets/`, otherwise `/` returns 503 `admin_build_missing`. Build it with `pnpm build` inside the dev container.
+- **Origins are two different things:** `MOCKSITE_COLLECT_ORIGIN` (default `http://site:9000` — the compose **service** name, which resolves on the network) is what a collector uses; `MOCKSITE_PUBLIC_ORIGIN` (default `http://127.0.0.1:9000`) is what a browser opens. The project name `mocksite` is not a hostname and does not resolve — that bug was real once; keep the distinction.
+- **Local scripts must bypass `*_proxy` for loopback.** On machines with `http_proxy` set, urllib routes `127.0.0.1` through the proxy and every admin call fails with 502 while `curl` works. `control.py` and both acceptance scripts build an opener with an empty `ProxyHandler`; do the same in any new script.
 - **No deployment image yet**; base compose intentionally publishes no ports. When adding it: non-root, read-only rootfs, no database/external storage.
 - **Egress exceptions are the consumer's job, not this repo's.** mocksite only promises to listen on 9000 (site) and 9001 (admin) and to keep the admin port unpublished. Any allowlist entry for a monitoring platform's egress proxy belongs to that platform's deployment config; do not add per-platform integration folders here.
 

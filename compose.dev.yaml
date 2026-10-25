@@ -1,0 +1,15 @@
+# Local development overlay: adds host access to the admin UI.
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build
+#   open http://127.0.0.1:9001
+#
+# The base file never publishes 9001; only this overlay binds it, and only to
+# loopback. The admin token still comes from MOCKSITE_TOKEN.
+services:
+  site:
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      # A developer's browser resolves 127.0.0.1, not the container name.
+      MOCKSITE_PUBLIC_ORIGIN: ${MOCKSITE_PUBLIC_ORIGIN:-http://127.0.0.1:9000}

@@ -64,7 +64,7 @@ class Settings:
 
     @property
     def resolved_collect_origin(self) -> str:
-        return self.collect_origin or f"http://mocksite:{self.site_port}"
+        return self.collect_origin or f"http://site:{self.site_port}"
 
     @property
     def resolved_public_origin(self) -> str:

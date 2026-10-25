@@ -1,9 +1,44 @@
 name: mocksite
 
-# Development toolchain only. Site/admin services and their ports arrive in
-# stage 5; this file intentionally publishes nothing.
+# Base file: a runnable site plus the dev toolchain.
+#
+# Port policy (README 6.2): only the site port 9000 is published, and only on
+# loopback. The admin port 9001 is reachable on the control network but never
+# published here — use compose.dev.yaml for local browser access.
 services:
+  site:
+    image: mocksite:local
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      MOCKSITE_TOKEN: ${MOCKSITE_TOKEN:?set MOCKSITE_TOKEN to at least 32 non-whitespace characters}
+      MOCKSITE_SITE_PORT: "9000"
+      MOCKSITE_ADMIN_PORT: "9001"
+      # Must match the compose service name: that is the DNS name another
+      # container on this network can resolve. `mocksite` is the project name,
+      # not a hostname, so it does not resolve.
+      MOCKSITE_COLLECT_ORIGIN: ${MOCKSITE_COLLECT_ORIGIN:-http://site:9000}
+      MOCKSITE_PUBLIC_ORIGIN: ${MOCKSITE_PUBLIC_ORIGIN:-http://127.0.0.1:9000}
+      MOCKSITE_LOG_LEVEL: ${MOCKSITE_LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Development toolchain: Python 3.12 + Node 22 + pnpm. Publishes nothing and
+  # is not started by `docker compose up` (profiles: tools).
   dev:
+    profiles: ["tools"]
     image: mocksite-dev:local
     build: {context: ., dockerfile: deploy/dev.Dockerfile}
     init: true

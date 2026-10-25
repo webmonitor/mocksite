@@ -2,7 +2,7 @@
 
 本目录记录实施任务与进度；页面、状态、管理后台及 API 的目标契约以 [项目 README](../README.md) 为准。变更已经发生后记录到 [changelog](../changelog/README.md)，不能把计划写成已交付能力。
 
-当前状态：阶段 0（工具链骨架）、阶段 1（状态内核）、阶段 2（双端口 HTTP）、阶段 3（管理后台 SPA）与阶段 4（列表与 CSR）已完成。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；部署镜像与平台联调仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
+当前状态：阶段 0–5 已完成，站点可一条命令启动。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；阶段 6 的扩展故障与安全探针仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
 
 ## 实施阶段
 
@@ -10,11 +10,11 @@
 
 ```mermaid
 graph LR
-  S0[0 工具链骨架] --> S1[1 状态内核 ✅]
-  S1 --> S2[2 双端口 HTTP]
+  S0[0 工具链骨架 ✅] --> S1[1 状态内核 ✅]
+  S1 --> S2[2 双端口 HTTP ✅]
   S2 --> S3[3 管理后台 SPA ✅]
   S2 --> S4[4 列表与 CSR ✅]
-  S3 --> S5[5 容器与平台联调]
+  S3 --> S5[5 容器与运行 ✅]
   S4 --> S5
   S5 --> S6[6 P4 扩展]
 ```
@@ -26,7 +26,7 @@ graph LR
 | 2 双端口 HTTP ✅ | `src/mocksite/cli.py`、`config.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
 | 3 管理后台 SPA ✅ | `web/admin/src/**`（`lib/api.ts`、`components/ui.tsx`、`features/{connection,state,scenarios,targets}`） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
 | 4 列表与 CSR ✅ | `site/static/{vendor,assets}/`、`site/templates/{list,deals}.html`、`/react/list`、`/vue/list`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
-| 5 容器与运行 | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`scripts/control.py` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
+| 5 容器与运行 ✅ | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`.env.example`、`scripts/control.py` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
 | 6 P4 扩展 | `/flaky`、`/slow`、单页覆盖、安全探针 | 确定性序列与计数，reset 清零；探针只接受固定枚举 | 相同序列产生相同响应；受限地址未被访问（出口或探针计数证据） |
 
 ### 阶段 0：工具链骨架
@@ -99,11 +99,16 @@ graph LR
 
 ### 阶段 5：容器与运行文档
 
-- [ ] 生产镜像（非 root、只读根文件系统、无数据库与外部存储）与基础 `compose.yaml`；仅发布 9000，9001 走控制网络。
-- [ ] `compose.dev.yaml` 映射 `127.0.0.1:9001:9001` 供浏览器打开后台；控制脚本封装 `/_admin/*` 调用。
-- [ ] 记录采集方接入所需的两条地址（采集地址/预览地址）与端口边界，保持管理端口对采集出口不可达。
-- [ ] 运行文档：构建、启动、后台访问与认证、管理请求、关闭，并验证宿主与容器内两条访问路径。
-- [ ] 完成 README §5.1 全部后台功能的浏览器验收并保留证据。
+- [x] 生产镜像（非 root、只读根文件系统、无数据库与外部存储）与基础 `compose.yaml`；仅发布 9000，9001 走控制网络。
+  `deploy/Dockerfile` 两阶段构建：Node 阶段 `pnpm install --frozen-lockfile && pnpm build` 产出后台，Python 阶段用 `--require-hashes` 安装依赖后以 UID `10001` 运行。`compose.yaml` 的 `site` 服务 `read_only: true` + `tmpfs: /tmp`，只发布 `127.0.0.1:9000`。实测：`/app`、`/etc` 写入被拒绝；基础 Compose 下宿主机直连 9001 被拒绝。
+- [x] `compose.dev.yaml` 映射 `127.0.0.1:9001:9001` 供浏览器打开后台；控制脚本封装 `/_admin/*` 调用。
+  overlay 只追加 9001 端口映射，不改镜像与状态。`scripts/control.py` 提供 `state`/`scenarios`/`pages`/`reset`/`scenario`/`patch`，退出码 0 成功、1 请求失败、2 用法或 JSON 错误；对 loopback 显式绕过 `*_proxy`（否则代理会把带 token 的请求转走）。
+- [x] 记录采集方接入所需的两条地址（采集地址/预览地址）与端口边界，保持管理端口对采集出口不可达。
+  `GET /_admin/meta` 同时给出 `collect_url` 与 `preview_url`；默认采集地址为 `http://site:9000`（compose 服务名，实测容器内可解析；`mocksite` 只是项目名，不解析——曾因此返回 `Name or service not known`，已修正并有单测锁定）。
+- [x] 运行文档：构建、启动、后台访问与认证、管理请求、关闭，并验证宿主与容器内两条访问路径。
+  README §6.4 覆盖 `cp .env.example .env` → `docker compose up --build -d --wait` → `/health` → overlay 打开后台 → `control.py` 操作 → `down`，并记录已验证的边界。容器内实测 `http://site:9000/{health,ssr/product,api/data,react/list}` 与 `http://site:9001/_admin/state` 均为 200。
+- [x] 完成 README §5.1 全部后台功能的浏览器验收并保留证据。
+  `scripts/check_admin_ui.py` → `29/29`，`scripts/check_target_pages.py` → `32/32`，两者均针对 Compose 启动的真实栈执行（默认端口改为 9000/9001）。
 
 ### 阶段 6：P4 扩展
 
@@ -142,12 +147,12 @@ graph LR
 
 依赖 P1、P2；本阶段通过后才算首轮交付完成。
 
-- [ ] 提供 Dockerfile、基础 Compose、本地开发 overlay 与控制脚本。
-- [ ] 提供可执行的启动、后台认证、管理请求和关闭文档。
-- [ ] 在运行文档中说明采集方如何接入（地址、端口、token），出口放行由采集方自行配置。
-- [ ] 用任意 HTTP 与无头浏览器采集方式分别验证基线、变化、故障和恢复行为。
-- [ ] 完成 README §5.1 全部后台功能的浏览器验收，包括错误凭据、非法输入、请求失败和重置。
-- [ ] 记录执行环境、操作步骤、预期结果及实际证据；邮件验证仅在显式启用时执行。
+- [x] 提供 Dockerfile、基础 Compose、本地开发 overlay 与控制脚本。见阶段 5。
+- [x] 提供可执行的启动、后台认证、管理请求和关闭文档。见 README §6.4。
+- [x] 在运行文档中说明采集方如何接入（地址、端口、token），出口放行由采集方自行配置。见 §6.3 与 §6.4。
+- [x] 用任意 HTTP 与无头浏览器采集方式分别验证基线、变化、故障和恢复行为。见两个浏览器验收脚本。
+- [x] 完成 README §5.1 全部后台功能的浏览器验收，包括错误凭据、非法输入、请求失败和重置。`29/29`。
+- [x] 记录执行环境、操作步骤、预期结果及实际证据。见 README §6.4 与 changelog。
 
 ## P4：后续扩展
 

@@ -104,7 +104,7 @@ def create_admin_app(
     token: str,
     admin_dist: Path,
     *,
-    site_origin: str = "http://mocksite:9000",
+    site_origin: str = "http://site:9000",
     site_public_origin: str = "http://127.0.0.1:9000",
 ) -> FastAPI:
     app = FastAPI(

@@ -6,7 +6,7 @@
 
 开发者先让监控平台采集正常页面、建立基线，再通过管理 API 改变价格、列表、页面结构或响应行为，检查平台实际提取了什么、是否正确识别变化，以及失败后能否恢复。
 
-> **当前状态：阶段 0–4 已完成，站点可用。** 商品页（static/SSR）、React/Vue 列表、动态分页页、JSON 数据、健康检查、管理 API 与管理后台均已落地，可离线运行且不依赖外部 CDN。部署镜像与扩展故障（阶段 5–6）仍未实现；已完成范围见 [变更记录](changelog/README.md)。
+> **当前状态：阶段 0–5 已完成，站点可一条命令启动。** 商品页（static/SSR）、React/Vue 列表、动态分页页、JSON 数据、健康检查、管理 API、管理后台、生产镜像与 Compose 服务均已落地，可离线运行且不依赖外部 CDN。阶段 6 的扩展故障与安全探针（`/flaky`、`/slow`、单页覆盖、私网探针）尚未实现；已完成范围见 [变更记录](changelog/README.md)。
 
 文档入口：[交付计划与任务进度](plan/README.md) · [变更记录](changelog/README.md)。本 README 定义目标契约，`plan/` 跟踪待实施任务，`changelog/` 记录已经发生的变更。
 
@@ -224,11 +224,76 @@ mocksite 只负责在 `9000`（页面）与 `9001`（管理）上提供内容与
 
 采集方需要知道的三件事：
 
-- 采集地址：容器网络内的 `http://mocksite:9000`（或部署时实际的主机名），由 `MOCKSITE_COLLECT_ORIGIN` 决定后台展示值；
+- 采集地址：容器网络内的服务名，compose 下为 `http://site:9000`（注意是服务名，不是 compose 项目名），由 `MOCKSITE_COLLECT_ORIGIN` 决定后台展示值；
 - 预览地址：开发者浏览器可打开的地址，由 `MOCKSITE_PUBLIC_ORIGIN` 决定；
 - 管理端口不得暴露给被采集页面或采集出口，token 只交给后台与控制脚本。
 
-`compose.yaml` 目前只包含开发工具链服务，不发布端口。生产镜像、基础 Compose 与开发 overlay 属阶段 5；届时必须同时提供可执行的构建、启动、后台访问与认证、管理请求和关闭步骤。
+`compose.yaml` 现在包含可运行的 `site` 服务（生产镜像 `deploy/Dockerfile`）与按 profile 隔离的 `dev` 工具链服务；启动、认证、管理请求与关闭步骤见 §6.4。
+
+## 6.4 运行方式
+
+### 启动
+
+```sh
+cp .env.example .env          # 填入 MOCKSITE_TOKEN（openssl rand -hex 32）
+docker compose up --build -d --wait
+curl --fail http://127.0.0.1:9000/health     # {"status":"ok"}
+```
+
+基础 Compose 只发布 `127.0.0.1:9000`（页面）。管理端口 `9001` 仅在控制网络内可达。
+
+需要在本机浏览器打开管理后台时，叠加开发 overlay：
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up --build -d --wait
+open http://127.0.0.1:9001        # 输入 .env 里的 MOCKSITE_TOKEN
+```
+
+overlay 只额外映射 `127.0.0.1:9001`，不改变镜像或状态。
+
+### 管理操作
+
+后台与脚本走同一套 API，二选一即可：
+
+```sh
+export MOCKSITE_TOKEN=$(grep ^MOCKSITE_TOKEN .env | cut -d= -f2)
+
+python scripts/control.py state                      # 当前状态（含 revision）
+python scripts/control.py scenarios                  # 场景清单
+python scripts/control.py scenario price_change      # 应用预设，输出 before/after
+python scripts/control.py patch '{"business":{"page_size":3}}'
+python scripts/control.py pages                      # 采集地址/预览地址/选择器
+python scripts/control.py reset                      # 恢复默认并清除故障
+```
+
+退出码：`0` 成功，`1` 请求失败（含 401/404/400），`2` 用法或 JSON 错误。
+
+### 停止
+
+```sh
+docker compose down            # 保留镜像
+docker compose down --rmi local
+```
+
+状态保存在进程内存中，容器重启即恢复默认数据，revision 重新计数。
+
+### 浏览器验收
+
+两个脚本都以真实 Chromium 驱动已启动的站点，并先调用 reset 建立已知基线：
+
+```sh
+python scripts/check_admin_ui.py       # 管理后台 29 项
+python scripts/check_target_pages.py   # 目标页 32 项，并断言无任何外部请求
+```
+
+默认访问 `http://127.0.0.1:9000` 与 `9001`，可用 `--site-origin` / `--admin-origin` 覆盖。
+
+### 已验证的边界
+
+- 镜像以 UID `10001` 运行，根文件系统只读（`read_only: true`），仅 `/tmp` 可写；实测 `/app`、`/etc` 写入被拒绝。
+- 基础 Compose 下宿主机直连 `9001` 被拒绝；overlay 下才可访问。
+- 容器内 `http://site:9000` 与 `http://site:9001` 均可访问（`site` 是 compose 服务名；`mocksite` 只是项目名，不解析）。
+- `/health` 在故障注入期间仍返回 200，管理 API 不受故障影响。
 
 ## 7. 交付顺序与验收
 

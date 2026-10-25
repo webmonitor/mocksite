@@ -21,6 +21,17 @@ def test_defaults() -> None:
     assert settings.log_level == "info"
 
 
+def test_default_collect_origin_uses_the_compose_service_name() -> None:
+    """`mocksite` is the compose project name and does not resolve; `site` does."""
+    settings = Settings.from_env(_env())
+    assert settings.resolved_collect_origin == "http://site:9000"
+
+
+def test_explicit_collect_origin_wins() -> None:
+    settings = Settings.from_env(_env(MOCKSITE_COLLECT_ORIGIN="http://fixture.local:9000"))
+    assert settings.resolved_collect_origin == "http://fixture.local:9000"
+
+
 def test_origins_are_derived() -> None:
     settings = Settings.from_env(_env(MOCKSITE_SITE_HOST="127.0.0.1"))
     assert settings.site_origin == "http://127.0.0.1:9000"

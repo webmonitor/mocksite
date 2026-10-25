@@ -41,12 +41,17 @@ class Results:
             self.failures.append(name)
 
 
+# Loopback must bypass *_proxy; otherwise urllib sends the bearer token to the
+# machine's proxy and every call fails with 502.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def _request(base: str, path: str, token: str, method: str = "GET") -> tuple[int, dict]:
     request = urllib.request.Request(
         f"{base}{path}", method=method, headers={"Authorization": f"Bearer {token}"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with _OPENER.open(request, timeout=10) as response:
             return response.status, json.load(response)
     except urllib.error.HTTPError as exc:
         return exc.code, {}
@@ -221,8 +226,8 @@ def run(admin_origin: str, site_origin: str, token: str) -> Results:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--admin-origin", default="http://127.0.0.1:19001")
-    parser.add_argument("--site-origin", default="http://127.0.0.1:19000")
+    parser.add_argument("--admin-origin", default="http://127.0.0.1:9001")
+    parser.add_argument("--site-origin", default="http://127.0.0.1:9000")
     parser.add_argument(
         "--token",
         default=os.environ.get("MOCKSITE_TOKEN", ""),

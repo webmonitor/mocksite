@@ -6,7 +6,7 @@
 
 开发者先让监控平台采集正常页面、建立基线，再通过管理 API 改变价格、列表、页面结构或响应行为，检查平台实际提取了什么、是否正确识别变化，以及失败后能否恢复。
 
-> **当前状态：阶段 0–5 已完成，站点可一条命令启动。** 商品页（static/SSR）、React/Vue 列表、动态分页页、JSON 数据、健康检查、管理 API、管理后台、生产镜像与 Compose 服务均已落地，可离线运行且不依赖外部 CDN。阶段 6 的扩展故障与安全探针（`/flaky`、`/slow`、单页覆盖、私网探针）尚未实现；已完成范围见 [变更记录](changelog/README.md)。
+> **当前状态：阶段 0–5 已完成，站点可一条命令启动。** 商品详情页（static/SSR，真实电商结构含诱饵价格节点与懒加载评价）、React/Vue 列表、动态分页页、JSON 数据、健康检查、管理 API、向导式管理后台（含内嵌实时预览）、生产镜像与 Compose 服务均已落地，可离线运行且不依赖外部 CDN。阶段 6 的扩展故障与安全探针（`/flaky`、`/slow`、单页覆盖、私网探针）尚未实现；已完成范围见 [变更记录](changelog/README.md)。
 
 文档入口：[交付计划与任务进度](plan/README.md) · [变更记录](changelog/README.md)。本 README 定义目标契约，`plan/` 跟踪待实施任务，`changelog/` 记录已经发生的变更。
 
@@ -49,15 +49,23 @@ mocksite 不负责等待平台采集完成。验证脚本必须以平台的运�
 
 | 目标路径 | 内容与渲染方式 | 主要验证点 |
 |---|---|---|
-| `/static/product` | 状态提交时生成完整 HTML，请求时直接返回；无 JS | HTTP 提取基线 |
-| `/ssr/product` | 每次请求根据当前状态生成完整 HTML；无 JS | 服务端渲染内容提取 |
+| `/static/product` | 真实电商详情页：状态提交时生成完整 HTML，请求时直接返回；评价区由 JS 分页渲染 | 多重价格节点中挑对目标、HTTP 提取基线 |
+| `/ssr/product` | 同一份详情页，每次请求根据当前状态生成完整 HTML | 服务端渲染内容提取 |
 | `/react/list` | React 在浏览器中请求数据并渲染列表 | JS 执行、就绪等待、列表提取 |
 | `/vue/list` | Vue 在浏览器中请求数据并渲染列表 | 相同数据在另一框架下的采集 |
 | `/dynamic/deals` | 浏览器加载首屏，点击“加载更多”追加下一页 | 异步加载、分页聚合、结束判断 |
-| `/api/data` | 返回当前商品与列表的 JSON 数据 | 前端数据源与人工核对 |
+| `/api/data` | 返回当前商品、列表与评价的 JSON 数据 | 前端数据源与人工核对 |
+| `/api/reviews?page=N` | 评价分页 JSON（1 起始） | 不经 DOM 分页验证评价 |
 | `/health` | 返回 `{"status":"ok"}` | 进程存活，不受场景故障影响 |
 
 `/static/product` 与 `/ssr/product` 使用同一个商品对象；三种列表页面使用同一组列表数据。商品价格和列表行价格是不同字段，不要求五种页面提取出相同价格。
+
+商品详情页刻意贴近真实电商站点，包含以下**容易误选**的结构（这些结构在所有场景下都保持不变）：
+
+- 除 `#current-price` 外还有 `#original-price`（划线价）、`.installment-price strong`（分期，约现价 1/4）、`.unit-price strong`（每 100 g，约现价 1/10）、`.msrp-price`（标价段）。这些节点都能被选择器选中并返回数值，选错不会报错，只会静默取到错误金额。
+- 评分同时以星级字符与 `#rating-value` 数字节点呈现；从星级反推会得到错误结果。
+- 图库、规格、变体、推荐位是页面装饰，不是监控目标。
+- 评价区由浏览器端分页加载：静态 HTML 只有骨架屏，`#reviews[data-ready="true"]` 在第一页评价真正渲染后才出现。
 
 所有业务数据响应携带 `X-Mocksite-Revision`，标识此次读取的状态版本。CSR 的 HTML 外壳不代表列表已就绪：数据加载成功后才设置 `data-ready="true"`，并在渲染根节点记录实际数据版本 `data-revision`。加载失败时显示错误状态，不设置就绪标记。
 
@@ -69,17 +77,32 @@ mocksite 不负责等待平台采集完成。验证脚本必须以平台的运�
 {
   "product": {
     "id": "coffee",
-    "name": "Fixture Coffee",
+    "name": "Fixture Coffee Roaster — Ethiopia Guji 1kg",
+    "brand": "Fixture Roasters",
+    "sku": "FX-COF-GUJI-1KG",
     "current_price": "128.50",
     "original_price": "199.00",
-    "currency": "USD"
+    "currency": "USD",
+    "rating": "4.6",
+    "review_count": 128,
+    "stock_status": "in_stock",
+    "stock_count": 42,
+    "description": "A washed Ethiopian single origin …",
+    "highlights": ["Single origin, washed process, Guji zone", "…"],
+    "images": [{"id": "img-1", "alt": "…", "src": "/static/assets/img/coffee-natural.svg", "color": "natural"}],
+    "variants": [{"id": "size-1kg", "label": "1 kg", "kind": "size", "available": true}],
+    "specs": [{"label": "Origin", "value": "Ethiopia, Guji zone"}]
   },
   "items": [
     {"id": "A", "name": "Alpha", "price": "10.00"},
     {"id": "B", "name": "Beta", "price": "20.00"},
     {"id": "C", "name": "Gamma", "price": "30.00"}
   ],
-  "page_size": 2
+  "page_size": 2,
+  "reviews": [
+    {"id": "rev-1", "author": "Dana R.", "rating": 5, "date": "2026-09-14", "title": "…", "body": "…", "verified": true}
+  ],
+  "review_page_size": 2
 }
 ```
 
@@ -88,21 +111,38 @@ mocksite 不负责等待平台采集完成。验证脚本必须以平台的运�
 - 价格以十进制字符串传输与渲染，后端使用 Decimal；非负、有限，最多 64 字符，不经过浮点转换。
 - 商品与列表行的 ID、名称是非空字符串，最多 256 字符；币种为三个大写 ASCII 字母。
 - 列表最多 100 行，默认 ID 唯一、顺序固定；重复行只能通过专用故障场景注入。
-- `page_size` 是 1–100 的整数；页数由列表长度计算，不维护可与数据冲突的 `total_pages`。
+- `page_size` 是 1–100 的整数；页数由列表长度计算，不维护可与数据冲突的 `total_pages`。`review_page_size` 同理为 1–50，评价页数派生。
+- 评分是 0–5 的十进制字符串；星级字符仅为装饰，不作为数据来源。
+- 库存状态为 `in_stock | low_stock | out_of_stock | preorder`；`out_of_stock` 时加入购物车按钮禁用，页面其余部分照常渲染。
+- 评价最多 50 条，`date` 为 `YYYY-MM-DD`，`rating` 为 1–5 整数。
 - 动态页面首次加载第一页；每次点击只追加下一页，加载期间禁用按钮，末页后隐藏按钮。空列表也应进入就绪状态。
 - 所有插入 HTML 的文本必须转义；CSR 使用框架的文本渲染能力，不把数据解释为 HTML。
 
 ### 3.3 选择器约定
 
-正常状态的页面提供稳定选择器。结构破坏场景才允许改变对应节点。
+页面结构在所有场景下保持稳定，因此选择器始终可用。
 
-| 目标 | CSS | XPath |
-|---|---|---|
-| 商品现价 | `#product #current-price` | `//*[@id="product"]//*[@id="current-price"]` |
-| 列表就绪标记 | `#app[data-ready="true"]` | `//*[@id="app" and @data-ready="true"]` |
-| 列表行 | `#inventory tbody tr.item` | `//*[@id="inventory"]/tbody/tr[contains(concat(' ', normalize-space(@class), ' '), ' item ')]` |
-| 行内价格（相对当前行） | `td.price` | `.//td[contains(concat(' ', normalize-space(@class), ' '), ' price ')]` |
-| 下一页按钮 | `#load-more` | `//*[@id="load-more"]` |
+| 目标 | 角色 | CSS | XPath |
+|---|---|---|---|
+| 商品现价 | 主要 | `#product #current-price` | `//*[@id="product"]//*[@id="current-price"]` |
+| 商品名称 | 辅助 | `#product #product-name` | `//*[@id="product"]//*[@id="product-name"]` |
+| 商品 SKU | 辅助 | `#product-sku` | `//*[@id="product-sku"]` |
+| 库存状态 | 辅助 | `#stock-status` | `//*[@id="stock-status"]` |
+| 评分（数字） | 辅助 | `#product #rating-value` | `//*[@id="product"]//*[@id="rating-value"]` |
+| 评价总数 | 辅助 | `#review-count` | `//*[@id="review-count"]` |
+| 规格表行 | 辅助 | `#specs .spec-table tbody tr` | `//*[@id="specs"]//tbody/tr` |
+| 评价区就绪标记 | 就绪 | `#reviews[data-ready="true"]` | `//*[@id="reviews" and @data-ready="true"]` |
+| 评价条目 | 主要 | `#reviews-list li.review-item` | `//*[@id="reviews-list"]/li[contains(concat(" ", normalize-space(@class), " "), " review-item ")]` |
+| 原价（划线价） | 诱饵 | `#product #original-price` | `//*[@id="product"]//*[@id="original-price"]` |
+| 分期价 | 诱饵 | `.installment-price strong` | `//*[contains(@class,"installment-price")]//strong` |
+| 单位价 | 诱饵 | `.unit-price strong` | `//*[contains(@class,"unit-price")]//strong` |
+| 标价段 | 诱饵 | `.msrp-price` | `//*[contains(@class,"msrp-price")]` |
+| 列表就绪标记 | 就绪 | `#app[data-ready="true"]` | `//*[@id="app" and @data-ready="true"]` |
+| 列表行 | 主要 | `#inventory tbody tr.item` | `//*[@id="inventory"]/tbody/tr[contains(concat(' ', normalize-space(@class), ' '), ' item ')]` |
+| 行内价格（相对当前行） | 主要 | `td.price` | `.//td[contains(concat(' ', normalize-space(@class), ' '), ' price ')]` |
+| 下一页按钮 | 辅助 | `#load-more` | `//*[@id="load-more"]` |
+
+「角色」的含义：**主要**是通常应当监控的节点；**就绪**是等待渲染完成的判据；**辅助**是可选监控的补充字段；**诱饵**形状相似但语义不同，误选会得到错误数据。该分类由 `site/pages.py` 单一来源维护，并通过 `GET /_admin/meta` 提供给后台。
 
 列表行使用 `data-id` 保存稳定业务 ID。选择器、示例 HTML 和实际页面需要一起验收，避免文档中的 XPath 与真实 DOM 层级不符。
 
@@ -112,7 +152,7 @@ React/Vue 及其他运行时资产随站点分发，不依赖 CDN。依赖版本
 
 ### 4.1 状态规则
 
-单实例使用进程内状态，包含业务数据、场景控制项和只读 `revision`。采用单进程服务；重启后恢复默认数据，版本重新计数。
+单实例使用进程内状态，包含业务数据、故障控制项和只读 `revision`。采用单进程服务；重启后恢复默认数据，版本重新计数。状态只有三个顶层键：`business`、`faults`、`revision`；`PATCH` 只接受前两个。
 
 每次成功写入都在锁内完成校验、状态提交及版本递增；请求读取一致的状态快照。非法输入不修改状态，也不推进版本。静态页面缓存随状态一起提交，不能出现“状态已更新、静态页面仍旧”的窗口。
 
@@ -122,23 +162,28 @@ React/Vue 及其他运行时资产随站点分发，不依赖 CDN。依赖版本
 
 每个预设场景都从默认状态构造完整目标状态，再一次性提交。重复应用同一场景得到相同内容，只有版本递增；场景之间不隐式叠加。组合条件通过状态 PATCH 显式设置。
 
-| 场景名 | 受控变化 | 核对重点 |
-|---|---|---|
-| `baseline` | 恢复默认数据和正常响应 | 基线输入明确，故障与计数器已清除 |
-| `no_change` | 保持默认业务数据，仅版本变化 | 在默认基线下，监控字段不变；版本元数据不应被误选为业务字段 |
-| `price_change` | 商品现价 `128.50` → `96.00` | 两个商品页均变化；列表不变 |
-| `item_price_change` | A 行价格 `10.00` → `12.50` | React、Vue、动态列表的同一行均变化 |
-| `empty_value` | 保留现价节点，文本设为空字符串 | 空文本与正常价格可区分 |
-| `missing_node` | 移除现价节点 | 选择器无匹配，与空文本不同 |
-| `empty_list` | 列表数据变为 `[]` | 列表成功加载但无记录，与加载失败不同 |
-| `structure_break` | 现价节点 ID 改为 `replacement-current-price`，保留文本 | 原选择器失效；不会自动“理解”新结构 |
-| `field_rename` | 列表单元格类名 `price` → `cost`，保留文本 | 行存在但字段选择器失效，不等同于业务价格变化 |
-| `duplicate_rows` | 在输出列表末尾追加一条 A 行副本 | 重复业务 ID 的检测与覆盖校验 |
-| `pagination_grow` | 在默认列表后追加 D、E 行，页大小仍为 2 | 动态列表从两页增至三页，原有行保持稳定 |
-| `outage` | 目标页面及 `/api/data` 返回 500 | 采集失败如何记录；管理 API 仍可用于恢复 |
-| `slow_site` | 目标页面及 `/api/data` 延迟 8000ms | 配置的采集超时小于延迟时，实际超时行为 |
+| 场景名 | 分组 | 受控变化 | 核对重点 |
+|---|---|---|---|
+| `baseline` | 基线 | 恢复默认数据和正常响应 | 基线输入明确，故障已清除 |
+| `no_change` | 基线 | 保持默认业务数据，仅版本变化 | 在默认基线下，业务字段不变；版本元数据不应被误选为业务字段 |
+| `price_change` | 价格 | 商品现价 `128.50` → `96.00` | 两个商品页均变化；列表不变 |
+| `price_increase` | 价格 | 商品现价 `128.50` → `158.00` | 涨价方向的变更同样被识别 |
+| `item_price_change` | 价格 | A 行价格 `10.00` → `12.50` | React、Vue、动态列表的同一行均变化；商品现价不变 |
+| `stock_out` | 内容 | 库存状态 `in_stock` → `out_of_stock`，数量归零 | 库存字段变化，价格不变；购物车按钮禁用 |
+| `rating_change` | 内容 | 评分 `4.6` → `3.2`，评价数 `128` → `131` | 评分与评价数同时变化 |
+| `reviews_empty` | 内容 | 评价列表变为空 | 评价区正常加载但 0 条，商品数据不变 |
+| `reviews_grow` | 内容 | 评价从 5 条增至 7 条 | 分页从 3 页变成 4 页 |
+| `empty_list` | 列表 | 列表数据变为 `[]` | 列表成功加载但无记录，与加载失败不同 |
+| `duplicate_rows` | 列表 | 在输出列表末尾追加一条 A 行副本 | 重复业务 ID 的检测与覆盖校验 |
+| `pagination_grow` | 列表 | 在默认列表后追加 D、E 行，页大小仍为 2 | 动态列表从两页增至三页，原有行保持稳定 |
+| `outage` | 故障 | 目标页面及 `/api/data` 返回 500 | 采集失败如何记录；管理 API 仍可用于恢复 |
+| `slow_site` | 故障 | 目标页面及 `/api/data` 延迟 8000ms | 配置的采集超时小于延迟时，实际超时行为 |
 
-`empty_value`、`missing_node` 和结构变化通过呈现控制项实现，不把非法价格写入业务数据。控制项使用互斥枚举表达同一字段的呈现状态，避免多个布尔开关互相冲突；完整字段 schema 随控制 API 实现交付。
+每个场景在服务端还带 `title`（中文标题）、`outcome`（采集方会看到什么）、`data_impact`（哪个数据字段变化）、`group`（分组）与 `compare_with_baseline`，通过 `GET /_admin/scenarios` 返回。后台直接渲染这些字段，不维护第二份文案。
+
+**范围界定：本项目的场景只切换页面数据，不改变页面结构。** 所有场景下每个页面的 DOM 骨架完全相同——`#current-price`、`#original-price`、`#rating-value`、`#gallery-image`、`#reviews` 等节点始终存在，只有文本与数值变化。不存在「节点缺失」「ID 改名」「单元格 class 改名」这类结构性破坏场景：验证目标是「数据变了平台是否识别」，而不是「DOM 被改写后提取器如何反应」。因此状态中也没有呈现控制项（`presentation`）这一层，`PATCH /_admin/state` 只接受 `business` 与 `faults`。
+
+提取器的健壮性（选择器写错、节点消失、页面改版）由使用方自己的测试覆盖，不属于本项目的输入契约。
 
 故障不会在后台定时恢复。验证脚本观察到失败后，再调用 `baseline` 或 reset 恢复，消除“还没采集就恢复了”的时序不确定性。故障发生与恢复是否发送告警，由平台配置与现有能力决定。
 
@@ -159,14 +204,28 @@ React/Vue 及其他运行时资产随站点分发，不依赖 CDN。依赖版本
 
 后台入口为管理端口的 `/`，与管理 API 同源部署。开发者不需要编写 curl 请求，就能完成“查看状态 → 修改数据或切换场景 → 打开目标页面 → 恢复默认”的完整流程。
 
-| 功能区 | 首轮范围 | 操作结果 |
+后台按**验证流程**组织，而不是按内部数据模型平铺。顶部是四步向导，右侧常驻目标页实时预览：
+
+```
+① 建立基线  →  ② 应用变更  →  ③ 核对页面  →  ④ 恢复
+                                    ↑
+                          右侧 iframe 实时预览目标页
+```
+
+| 区域 | 内容 | 操作结果 |
 |---|---|---|
-| 连接与认证 | 输入管理 token、连接状态、退出 | 认证成功后读取状态；认证失败显示错误，不展示受保护数据 |
-| 状态总览 | 当前版本、商品数据、列表数据、有效故障与呈现控制项、手动刷新 | 展示服务端实际状态；自定义修改后不继续把状态标为某个未修改的预设场景 |
-| 数据编辑 | 商品字段表单、列表行增删改、页大小编辑 | 提交前校验，保存成功后用服务端返回状态更新界面；价格始终按字符串处理 |
-| 场景与故障控制 | 展示已实现场景的影响范围、应用预设、编辑当前控制项、恢复默认 | 应用预设或重置前提示将覆盖当前状态；成功后展示前后版本及变化内容 |
-| 目标页面入口 | 列出已实现页面、用途、CSS/XPath，提供复制和新标签页打开 | 分别标明浏览器预览地址与平台采集地址，避免把容器主机名当作宿主可访问地址 |
+| 连接与认证 | 输入管理 token、连接状态、退出 | 认证成功后读取状态；认证失败显示可读错误，不展示受保护数据 |
+| 步骤条 | 四步进度、当前生效场景、一键跳转 | 应用场景后自动推进到「核对页面」 |
+| ① 建立基线 | 应用 `baseline` 场景、`reset`；当前 revision、商品价、列表行、评价数、故障 | 两者都恢复默认并清除故障，语义差异在界面内解释 |
+| ② 应用变更 | 按「基线 / 价格变化 / 商品内容 / 列表与分页 / 故障注入」分组的场景卡片；手动编辑（商品字段 / 列表行 / 评价三个标签页）；故障注入控件 | 应用前二次确认；每张卡片显示中文标题、采集方会看到什么、哪个数据字段变化 |
+| ③ 核对页面 | 当前 revision 与生效场景、选择器参考（按主要/就绪/辅助/诱饵分组，含 CSS、XPath、复制）、本次变更的字段级 diff | 诱饵节点被明确标注，避免误选 |
+| ④ 恢复 | 恢复到基线、`reset`；当前故障与延迟 | 故障不会自动恢复，必须显式操作 |
+| 实时预览 | 目标页 iframe，标签切换 `/static/product`、`/ssr/product`、列表页、JSON | 任何变更后自动重载；以 1180 px 桌面宽度渲染再缩放，保证价格区与图库并排可见 |
 | 操作反馈 | 提交中、成功、字段错误、认证失效、网络失败 | 请求期间禁用重复提交；失败时保留编辑内容，不伪报保存成功 |
+
+预览以桌面宽度渲染的原因：商品页在 900 px 断点会改为单列，若直接按预览面板宽度渲染，价格区会被挤到图库下方，恰好看不到要验证的内容。
+
+预览 iframe 带 `sandbox="allow-scripts allow-same-origin"`：脚本必须允许（CSR 页面要在浏览器里渲染），但目标页不应能操作后台。
 
 后台复用下述 API，不维护独立业务状态或另一套场景实现。未保存的表单内容与已生效状态明确区分；服务端校验是最终依据。管理请求结果未知时先刷新状态核对，不自动重放写入。
 
@@ -203,7 +262,17 @@ PATCH 中对象字段递归合并，数组整体替换；`null` 不表示删除�
 
 服务端模板生成静态及 SSR HTML；React/Vue 使用本地固定版本资产，动态列表保持最小实现。管理后台使用本地 React 资产构建表单与场景控制界面，通过同源 API 读写状态，不引入独立前端服务。容器以非 root 用户运行，支持只读根文件系统，不需要数据库或外部存储。
 
-前端统一使用 **pnpm** 管理依赖和执行构建。`web/` 共用一个 `package.json` 和一个 `pnpm-lock.yaml`，覆盖管理后台及 React/Vue 目标页；不使用 `package-lock.json` 或 Yarn 锁文件。`package.json` 的 `packageManager` 字段已固定 pnpm `12.15.0`，锁文件由 pnpm 生成并提交。依赖安装和前端构建均在 Docker 内执行，部署构建使用冻结锁文件安装，确保使用已提交的依赖版本。构建入口为 `web/admin`（管理后台）；目标页使用随站点分发的 UMD 资产，不参与该构建。
+前端统一使用 **pnpm** 管理依赖和执行构建。`web/` 共用一个 `package.json` 和一个 `pnpm-lock.yaml`，覆盖管理后台及 React/Vue 目标页；不使用 `package-lock.json` 或 Yarn 锁文件。
+
+**前端代码全部在 `web/` 下，`src/` 只放 Python 后端。** 具体分工：
+
+| 位置 | 内容 | 是否参与构建 |
+|---|---|---|
+| `web/admin/` | 管理后台源码（React + Vite） | 是，产物到 `web/dist` |
+| `web/targets/assets/` | 目标页脚本与样式（`list.js`、`product.js`、`shop.css`、`img/`） | 否，原样分发 |
+| `web/targets/vendor/` | 本地 UMD React 18.3.1 / Vue 3.5.43 + 许可证 + `manifest.json` | 否，原样分发 |
+
+`web/targets/` 不经过 Vite：这些文件由站点进程直接挂载在 `/static/assets` 与 `/static/vendor`。构建 wheel 时通过 hatchling 的 `force-include` 把它们复制进包的 `mocksite/_static/`，因此生产镜像不依赖仓库里的 `web/` 目录。运行时解析顺序为：`MOCKSITE_TARGET_ASSETS` 显式配置 → 包内 `_static` → 仓库 `web/targets`（仅便于可编辑安装）。`package.json` 的 `packageManager` 字段已固定 pnpm `12.15.0`，锁文件由 pnpm 生成并提交。依赖安装和前端构建均在 Docker 内执行，部署构建使用冻结锁文件安装，确保使用已提交的依赖版本。构建入口为 `web/admin`（管理后台）；目标页使用随站点分发的 UMD 资产，不参与该构建。
 
 Python 依赖同样在 Docker 内安装。宿主侧可选使用工作区共用的 conda 环境（`../.github/environment.yml`，环境名 `webmonitor`，Python 3.12），用于编辑、lint 与快速跑测试；`pyproject.toml` 的 pin 需与 `../.github/requirements-workspace.txt` 保持一致，容器构建仍以 `pyproject.toml` 为准。
 
@@ -279,11 +348,11 @@ docker compose down --rmi local
 
 ### 浏览器验收
 
-两个脚本都以真实 Chromium 驱动已启动的站点，并先调用 reset 建立已知基线：
+两个脚本位于 `tests/acceptance/`（浏览器验收，不属于 pytest），都以真实 Chromium 驱动已启动的站点，并先调用 reset 建立已知基线：
 
 ```sh
-python scripts/check_admin_ui.py       # 管理后台 29 项
-python scripts/check_target_pages.py   # 目标页 32 项，并断言无任何外部请求
+python tests/acceptance/check_admin_ui.py       # 管理后台 42 项
+python tests/acceptance/check_target_pages.py   # 目标页 62 项，并断言无任何外部请求
 ```
 
 默认访问 `http://127.0.0.1:9000` 与 `9001`，可用 `--site-origin` / `--admin-origin` 覆盖。
@@ -302,7 +371,7 @@ python scripts/check_target_pages.py   # 目标页 32 项，并断言无任何�
 | 阶段 | 交付内容 | 完成标准 |
 |---|---|---|
 | P1：管理后台与商品页面 | 状态校验、管理认证、版本、reset、static/SSR、商品变化与故障场景；后台认证、状态总览、商品编辑、场景控制与操作反馈 | 在后台完成“默认价格 → 修改 → 恢复”；非法写入不改变状态；500 期间仍可打开后台并恢复；API 返回状态与后台显示一致 |
-| P2：浏览器与列表 | React/Vue、本地资产、就绪标记、动态分页、列表场景；后台列表编辑、页大小与呈现控制、页面入口及选择器复制 | 浏览器离线加载并按选择器提取；通过后台修改列表后，目标页面同步变化；分页获得完整有序 ID；区分空列表、加载失败、字段缺失与重复行 |
+| P2：浏览器与列表 | React/Vue、本地资产、就绪标记、动态分页、列表场景；后台列表编辑、页大小与故障控制、页面入口及选择器复制 | 浏览器离线加载并按选择器提取；通过后台修改列表后，目标页面同步变化；分页获得完整有序 ID；区分空列表、加载失败与重复行 |
 | P3：容器与平台联调 | Dockerfile、基础 Compose 与本地开发 overlay、控制脚本、平台测试 overlay、运行文档；后台完整流程验收 | 一条文档化命令启动并可访问后台；管理端口无公网发布；浏览器完成 §5.1 全部操作；两个平台分别完成基线、变化、故障、恢复验证 |
 | P4：扩展故障与安全验证 | 固定失败序列、单请求延迟、单页覆盖、安全探针 | 相同操作序列产生相同响应；单页覆盖不泄漏到其他页面；受限目的地址未被访问，有出口或探针证据 |
 

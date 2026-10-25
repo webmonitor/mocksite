@@ -15,11 +15,11 @@ from pydantic import ValidationError
 
 from mocksite.state.models import (
     DEFAULT_BUSINESS,
+    DEFAULT_STATE,
     MAX_ITEMS,
     BusinessData,
     Faults,
     Item,
-    Presentation,
     Product,
     State,
 )
@@ -27,9 +27,12 @@ from mocksite.state.models import (
 PRODUCT_DOC: dict[str, Any] = {
     "id": "coffee",
     "name": "Fixture Coffee",
+    "brand": "Fixture Roasters",
+    "sku": "FX-COF-1KG",
     "current_price": "128.50",
     "original_price": "199.00",
     "currency": "USD",
+    "description": "A fixture product used by the model tests.",
 }
 
 
@@ -95,9 +98,12 @@ def test_price_accepts_decimal_for_in_process_builders() -> None:
     product = Product(
         id="coffee",
         name="Fixture Coffee",
+        brand="Fixture Roasters",
+        sku="FX-COF-1KG",
         current_price=Decimal("7.25"),
         original_price=Decimal("199.00"),
         currency="USD",
+        description="A fixture product used by the model tests.",
     )
     assert product.current_price == Decimal("7.25")
 
@@ -188,9 +194,12 @@ def test_fault_delay_bounds_rejected(delay: Any) -> None:
         Faults.model_validate({"delay_ms": delay})
 
 
-def test_presentation_enum_rejects_unknown_value() -> None:
+def test_state_rejects_a_presentation_section() -> None:
+    """`presentation` was removed on purpose: page shape is fixed."""
+    document = DEFAULT_STATE.model_dump(mode="json")
+    document["presentation"] = {"product_price": "missing"}
     with pytest.raises(ValidationError):
-        Presentation.model_validate({"product_price": "gone"})
+        State.model_validate(document)
 
 
 def test_state_json_round_trip_is_stable() -> None:

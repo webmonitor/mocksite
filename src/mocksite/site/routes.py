@@ -23,9 +23,32 @@ from mocksite.site.render import render_deals, render_list, render_product
 from mocksite.state.models import State
 from mocksite.state.store import StateStore
 
-STATIC_DIR = Path(__file__).parent / "static"
+#: Where the wheel puts the vendored target-page assets (see pyproject
+#: ``[tool.hatch.build.targets.wheel.force-include]``, which maps them to
+#: ``mocksite/_static`` — the package root, not ``mocksite/site/``).
+#: The repo keeps the files under ``web/targets`` because they are frontend
+#: code, not Python.
+PACKAGED_ASSETS = Path(__file__).parent.parent / "_static"
+#: Repo checkout location, used when running from an editable install.
+REPO_ASSETS = Path(__file__).resolve().parents[3] / "web" / "targets"
 
 ASSET_PREFIXES = ("/static/assets/", "/static/vendor/")
+
+
+def resolve_asset_dir(explicit: Path | None = None) -> Path:
+    """Locate ``assets/`` and ``vendor/``.
+
+    Order: explicit config, then the packaged copy inside the wheel, then the
+    repo checkout. The order matters — an installed package must never depend
+    on a sibling ``web/`` directory that the image deletes.
+    """
+    candidates = [explicit, PACKAGED_ASSETS, REPO_ASSETS]
+    for candidate in candidates:
+        if candidate is not None and (candidate / "assets").is_dir():
+            return candidate
+    searched = ", ".join(str(candidate) for candidate in candidates if candidate is not None)
+    raise RuntimeError(f"target page assets not found; searched: {searched}")
+
 
 REVISION_HEADER = "X-Mocksite-Revision"
 NO_STORE = {"Cache-Control": "no-store"}
@@ -37,7 +60,7 @@ def _json(state: State) -> dict[str, Any]:
     return state.business.model_dump(mode="json")
 
 
-def create_site_app(store: StateStore) -> FastAPI:
+def create_site_app(store: StateStore, assets_dir: Path | None = None) -> FastAPI:
     app = FastAPI(
         title="mocksite",
         docs_url=None,
@@ -72,8 +95,11 @@ def create_site_app(store: StateStore) -> FastAPI:
     # Vendored runtimes and page scripts live under /static/assets and
     # /static/vendor; /static/product stays a real route. Mounted rather than
     # proxied so the target pages work with no network egress at all.
-    app.mount("/static/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
-    app.mount("/static/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
+    # The files themselves live in web/targets (frontend code) and are
+    # force-included into the wheel at build time.
+    static_dir = resolve_asset_dir(assets_dir)
+    app.mount("/static/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+    app.mount("/static/vendor", StaticFiles(directory=static_dir / "vendor"), name="vendor")
 
     @app.get("/health")
     async def health() -> JSONResponse:
@@ -110,6 +136,31 @@ def create_site_app(store: StateStore) -> FastAPI:
         payload = _json(state)
         payload["revision"] = state.revision
         payload["page_count"] = state.business.page_count
+        payload["review_page_count"] = state.business.review_page_count
         return JSONResponse(payload, headers=_headers(state))
+
+    @app.get("/api/reviews")
+    async def api_reviews(page: int = 1) -> JSONResponse:
+        """One page of reviews, so a collector can page them without the DOM.
+
+        ``page`` is 1-based; out-of-range pages return an empty ``reviews``
+        list rather than an error, which is what a real shop does.
+        """
+        state = store.state
+        business = state.business
+        size = business.review_page_size
+        index = max(page, 1) - 1
+        chunk = business.reviews[index * size : (index + 1) * size]
+        return JSONResponse(
+            {
+                "reviews": [review.model_dump(mode="json") for review in chunk],
+                "page": index + 1,
+                "page_size": size,
+                "page_count": business.review_page_count,
+                "total": len(business.reviews),
+                "revision": state.revision,
+            },
+            headers=_headers(state),
+        )
 
     return app

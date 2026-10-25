@@ -10,6 +10,7 @@ their decimal strings, so a value can never be interpreted as markup.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,18 +32,93 @@ def _environment() -> Environment:
     )
 
 
+#: Stock labels a shop shows instead of a raw enum.
+STOCK_LABELS = {
+    "in_stock": "In stock, ready to ship",
+    "low_stock": "Low stock",
+    "out_of_stock": "Out of stock",
+    "preorder": "Pre-order — ships next week",
+}
+
+#: Recommended products are fixed: they are page chrome, not monitored content.
+RECOMMENDATIONS = (
+    {
+        "name": "Kenya Nyeri AA 1kg",
+        "price": "142.00",
+        "src": "/static/assets/img/coffee-red.svg",
+        "alt": "Kenya Nyeri coffee bag",
+    },
+    {
+        "name": "Colombia Huila 1kg",
+        "price": "118.00",
+        "src": "/static/assets/img/coffee-black.svg",
+        "alt": "Colombia Huila coffee bag",
+    },
+    {
+        "name": "Brazil Cerrado 1kg",
+        "price": "96.00",
+        "src": "/static/assets/img/coffee-natural-back.svg",
+        "alt": "Brazil Cerrado coffee bag",
+    },
+    {
+        "name": "Decaf Guji 1kg",
+        "price": "134.00",
+        "src": "/static/assets/img/coffee-natural.svg",
+        "alt": "Decaf Guji coffee bag",
+    },
+)
+
+
+def _money(value: Decimal) -> str:
+    """Fixed two-decimal rendering, like a shop price tag."""
+    return f"{value:.2f}"
+
+
 def _context(state: State) -> dict[str, object]:
-    product = state.business.product
+    business = state.business
+    product = business.product
+    current = product.current_price
+    original = product.original_price
+
+    discount = 0
+    if original > 0 and current < original:
+        discount = round((original - current) / original * 100)
+    savings = _money(original - current) if original > current else _money(Decimal(0))
+
+    colors = tuple(v for v in product.variants if v.kind == "color")
+    sizes = tuple(v for v in product.variants if v.kind == "size")
+
     return {
         "revision": state.revision,
-        "presentation": state.presentation,
+        "images": product.images,
+        "color_variants": colors,
+        "size_variants": sizes,
+        "default_color": colors[0] if colors else None,
+        "default_size": next((v for v in sizes if v.id == "size-1kg"), sizes[0] if sizes else None),
+        "recommendations": RECOMMENDATIONS,
+        "review_page_size": business.review_page_size,
+        "discount_percent": discount,
+        "savings": savings,
+        "installment_price": _money(current / 4),
+        # 1 kg default: per-100 g is the price divided by ten.
+        "unit_price": _money(current / 10),
+        "stock_label": STOCK_LABELS[product.stock_status],
         "product": {
             "id": product.id,
             "name": product.name,
+            "brand": product.brand,
+            "sku": product.sku,
             # Decimal -> str keeps the exact decimal representation.
-            "current_price": str(product.current_price),
-            "original_price": str(product.original_price),
+            "current_price": _money(current),
+            "original_price": _money(original),
             "currency": product.currency,
+            "rating": _money(product.rating),
+            "review_count": product.review_count,
+            "stock_status": product.stock_status,
+            "stock_count": product.stock_count,
+            "description": product.description,
+            "highlights": product.highlights,
+            "specs": product.specs,
         },
     }
 
@@ -79,18 +155,10 @@ def render_list(state: State, framework: str) -> str:
             vendor=vendor,
             script=script,
             page_size=state.business.page_size,
-            presentation=state.presentation,
         )
     )
 
 
 def render_deals(state: State) -> str:
     """HTML shell for ``/dynamic/deals`` (pagination happens in the browser)."""
-    return (
-        _environment()
-        .get_template("deals.html")
-        .render(
-            page_size=state.business.page_size,
-            presentation=state.presentation,
-        )
-    )
+    return _environment().get_template("deals.html").render(page_size=state.business.page_size)

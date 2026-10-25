@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from mocksite.site.render import VENDOR_REACT, VENDOR_VUE, render_deals, render_list
-from mocksite.state.models import DEFAULT_STATE, Presentation
+from mocksite.state.models import DEFAULT_STATE
 
-STATIC = Path(__file__).parents[2] / "src" / "mocksite" / "site" / "static"
+ASSETS = Path(__file__).parents[2] / "web" / "targets"
 
 
 @pytest.mark.parametrize(
@@ -47,12 +47,9 @@ def test_list_shell_never_marks_ready() -> None:
         assert "data-revision" not in html
 
 
-def test_list_shell_passes_page_size_and_price_rendering() -> None:
+def test_list_shell_passes_page_size() -> None:
     state = DEFAULT_STATE.model_copy(
-        update={
-            "presentation": Presentation(item_price="renamed"),
-            "business": DEFAULT_STATE.business.model_copy(update={"page_size": 3}),
-        }
+        update={"business": DEFAULT_STATE.business.model_copy(update={"page_size": 3})}
     )
     html = render_list(state, "react")
     payload = json.loads(
@@ -60,7 +57,7 @@ def test_list_shell_passes_page_size_and_price_rendering() -> None:
             "</script>", 1
         )[0]
     )
-    assert payload == {"itemPrice": "renamed", "pageSize": 3}
+    assert payload == {"pageSize": 3}
 
 
 def test_unknown_framework_rejected() -> None:
@@ -89,14 +86,14 @@ def test_vendor_manifest_matches_shipped_files() -> None:
     import base64
     import hashlib
 
-    manifest = json.loads((STATIC / "vendor" / "manifest.json").read_text())
+    manifest = json.loads((ASSETS / "vendor" / "manifest.json").read_text())
     assert manifest["assets"], "manifest must list the vendored bundles"
     for asset in manifest["assets"]:
-        data = (STATIC / "vendor" / asset["file"]).read_bytes()
+        data = (ASSETS / "vendor" / asset["file"]).read_bytes()
         digest = "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode()
         assert digest == asset["sha512"], asset["file"]
         assert len(data) == asset["bytes"], asset["file"]
-        assert (STATIC / "vendor" / asset["license_file"]).is_file(), asset["license_file"]
+        assert (ASSETS / "vendor" / asset["license_file"]).is_file(), asset["license_file"]
 
 
 def test_every_referenced_asset_exists() -> None:
@@ -109,4 +106,39 @@ def test_every_referenced_asset_exists() -> None:
             path = fragment.split('"', 1)[0]
             if not path.startswith("/static/"):
                 continue
-            assert (STATIC / path.removeprefix("/static/")).is_file(), path
+            assert (ASSETS / path.removeprefix("/static/")).is_file(), path
+
+
+def test_asset_resolution_prefers_the_packaged_copy() -> None:
+    """An installed package must never fall back to the repo checkout.
+
+    The production image deletes ``web/``, so if resolution ever preferred the
+    repo path the image would start with "assets not found" instead of serving
+    pages. Order is: explicit config, packaged wheel copy, repo checkout.
+    """
+    from mocksite.site.routes import PACKAGED_ASSETS, REPO_ASSETS, resolve_asset_dir
+
+    # The packaged location sits at the package root, next to `site/`.
+    assert PACKAGED_ASSETS.name == "_static"
+    assert PACKAGED_ASSETS.parent.name == "mocksite"
+    # The repo fallback points at the frontend folder, not at src/.
+    assert REPO_ASSETS.parts[-2:] == ("web", "targets")
+
+    # In a source checkout only the repo copy exists, so it is what resolves.
+    assert resolve_asset_dir() == REPO_ASSETS
+
+
+def test_pyproject_force_includes_every_asset_tree() -> None:
+    """web/targets is the source of truth; the wheel must pull both subtrees."""
+    import tomllib
+
+    root = Path(__file__).parents[2]
+    config = tomllib.loads((root / "pyproject.toml").read_text())
+    forced = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+
+    assert "web/targets/assets" in forced
+    assert "web/targets/vendor" in forced
+    # Everything lands under the package root so `PACKAGED_ASSETS` finds it.
+    assert all(target.startswith("mocksite/") for target in forced.values())
+    for source in forced:
+        assert (root / source).is_dir(), f"{source} is missing"

@@ -32,11 +32,7 @@
               { key: item.id + '-' + item.name, className: 'item', 'data-id': item.id },
               e('td', { className: 'id' }, item.id),
               e('td', { className: 'name' }, item.name),
-              e(
-                'td',
-                { className: props.itemPrice === 'renamed' ? 'cost' : 'price' },
-                item.price,
-              ),
+              e('td', { className: 'price' }, item.price),
             )
           }),
         ),
@@ -47,7 +43,7 @@
 
   function mount(container, data) {
     var root = global.ReactDOM.createRoot(container)
-    root.render(e(List, { items: data.items, itemPrice: shared.page.itemPrice }))
+    root.render(e(List, { items: data.items }))
     // Rendering is synchronous for this tree, so readiness can be set right
     // after render; if React ever batches, the collector would still wait for
     // data-ready rather than a fixed timeout.

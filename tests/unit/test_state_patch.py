@@ -28,7 +28,6 @@ def test_partial_patch_leaves_other_sections_untouched() -> None:
     assert state.faults.kind == "outage"
     assert state.faults.delay_ms == 0
     assert state.business == DEFAULT_STATE.business
-    assert state.presentation == DEFAULT_STATE.presentation
 
 
 def test_empty_patch_is_a_no_op() -> None:
@@ -132,7 +131,6 @@ def test_body_must_be_an_object(payload: Any) -> None:
         ({"business": {"product": {"current_price": 1.5}}}, "business.product.current_price"),
         ({"business": {"product": {"currency": "usd"}}}, "business.product.currency"),
         ({"faults": {"delay_ms": 30_001}}, "faults.delay_ms"),
-        ({"presentation": {"product_price": "gone"}}, "presentation.product_price"),
         (
             {"business": {"items": [{"id": "", "name": "n", "price": "1.00"}]}},
             "business.items.0.id",

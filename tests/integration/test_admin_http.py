@@ -8,6 +8,7 @@ import logging
 import httpx
 import pytest
 
+from mocksite.state.models import DEFAULT_PRODUCT
 from tests.integration.harness import AUTH, TOKEN, Stack
 
 pytestmark = pytest.mark.asyncio
@@ -46,11 +47,10 @@ async def test_token_is_accepted_verbatim(stack: Stack) -> None:
 
 async def test_state_document_shape(stack: Stack) -> None:
     payload = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
-    assert set(payload) == {"revision", "business", "presentation", "faults"}
+    assert set(payload) == {"revision", "business", "faults"}
     assert payload["revision"] == 0
     assert payload["business"]["product"]["current_price"] == "128.50"
     assert payload["business"]["page_size"] == 2
-    assert payload["presentation"]["product_price"] == "normal"
     assert payload["faults"] == {"kind": "none", "delay_ms": 0}
 
 
@@ -97,7 +97,7 @@ async def test_invalid_patch_leaves_state_untouched(stack: Stack) -> None:
     current = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     assert current["revision"] == 1
     assert current["business"]["page_size"] == 3
-    assert current["business"]["product"]["name"] == "Fixture Coffee"
+    assert current["business"]["product"]["name"] == DEFAULT_PRODUCT.name
 
 
 async def test_patch_requires_json_media_type(stack: Stack) -> None:
@@ -253,12 +253,12 @@ async def test_state_round_trips_through_json(stack: Stack) -> None:
     original = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     await stack.admin.patch(
         "/_admin/state",
-        json={"business": original["business"], "presentation": original["presentation"]},
+        json={"business": original["business"], "faults": original["faults"]},
         headers=AUTH,
     )
     after = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     assert after["business"] == original["business"]
-    assert after["presentation"] == original["presentation"]
+    assert after["faults"] == original["faults"]
 
 
 async def test_client_error_on_unknown_route_does_not_leak(stack: Stack) -> None:

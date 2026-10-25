@@ -16,6 +16,14 @@ MIN_TOKEN_CHARS = 32
 DEFAULT_SITE_PORT = 9000
 DEFAULT_ADMIN_PORT = 9001
 DEFAULT_ADMIN_DIST = "web/dist"
+#: Where the target pages' vendored bundles and page scripts live.
+#:
+#: In the repo that is ``web/targets`` (frontend code belongs under ``web/``).
+#: The wheel force-includes those files to ``mocksite/_static``, so an installed
+#: package resolves to the packaged copy with no env var set. ``routes.py``
+#: falls back to ``web/targets`` when the packaged directory is absent, which is
+#: what makes an editable install work without configuration.
+DEFAULT_TARGET_ASSETS = "web/targets"
 LOG_LEVELS = frozenset({"critical", "error", "warning", "info", "debug", "trace"})
 
 
@@ -52,6 +60,8 @@ class Settings:
     admin_port: int
     admin_dist: Path
     log_level: str
+    #: Vendored target-page assets (``assets/`` and ``vendor/`` subdirectories).
+    target_assets: Path | None = None
     #: Origin a monitoring platform should collect from (container DNS name in
     #: compose). Never assume it equals the origin a human can open.
     collect_origin: str | None = None
@@ -102,6 +112,9 @@ class Settings:
             admin_port=admin_port,
             admin_dist=Path(source.get("MOCKSITE_ADMIN_DIST") or DEFAULT_ADMIN_DIST),
             log_level=level,
+            target_assets=Path(source["MOCKSITE_TARGET_ASSETS"])
+            if source.get("MOCKSITE_TARGET_ASSETS")
+            else None,
             collect_origin=source.get("MOCKSITE_COLLECT_ORIGIN") or None,
             public_origin=source.get("MOCKSITE_PUBLIC_ORIGIN") or None,
         )

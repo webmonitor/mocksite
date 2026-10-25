@@ -2,19 +2,267 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>{{ product.name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ product.name }} — {{ product.brand }}</title>
+    <link rel="stylesheet" href="/static/assets/shop.css" />
+    <script id="mocksite-product" type="application/json">
+      {
+        "reviewPageSize": {{ review_page_size }},
+        "productId": {{ product.id | tojson }}
+      }
+    </script>
   </head>
   <body>
-    <main id="product" data-revision="{{ revision }}">
-      <h1 id="product-name">{{ product.name }}</h1>
-      <p class="prices">
-        {% if presentation.product_price == "empty" %}<span id="current-price"></span>
-        {% elif presentation.product_price == "missing" %}
-        {% elif presentation.product_price == "renamed" %}<span id="replacement-current-price">{{ product.current_price }}</span>
-        {% else %}<span id="current-price">{{ product.current_price }}</span>
-        {% endif %}<span id="original-price">{{ product.original_price }}</span>
-        <span id="currency">{{ product.currency }}</span>
-      </p>
+    {#- The page is deliberately rich: a collector has to pick the right price
+        node out of several price-shaped ones, and wait for the review list to
+        finish loading instead of scraping the skeleton. #}
+
+    <div class="utility-bar">
+      <div class="wrap">
+        <span>Free shipping over 50.00</span>
+        <span>Roasted to order</span>
+        <span>Help</span>
+        <span>USD</span>
+      </div>
+    </div>
+
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brandmark" href="/static/product">{{ product.brand }}</a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="/static/product">Shop</a>
+          <a href="/react/list">Subscriptions</a>
+          <a href="/dynamic/deals">Deals</a>
+          <a href="/static/product">Brew guides</a>
+        </nav>
+        <div class="header-tools">
+          <span>Search</span>
+          <span>Account</span>
+          <span>Cart (0)</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/static/product">Home</a></li>
+          <li><a href="/static/product">Coffee</a></li>
+          <li><a href="/static/product">Single origin</a></li>
+          <li><a href="/static/product">Ethiopia</a></li>
+          <li aria-current="page">{{ product.name }}</li>
+        </ol>
+      </nav>
+    </div>
+
+    <main id="product" class="wrap" data-revision="{{ revision }}" data-sku="{{ product.sku }}">
+      <div class="product-layout">
+        {# ---------- gallery ---------- #}
+        <section class="gallery" aria-label="Product images">
+          <ul class="gallery-thumbs">
+            {% for image in images %}
+            <li>
+              <button
+                type="button"
+                data-gallery-index="{{ loop.index0 }}"
+                aria-selected="{{ 'true' if loop.first else 'false' }}"
+                aria-label="{{ image.alt }}"
+              >
+                <img src="{{ image.src }}" alt="" width="84" height="84" loading="lazy" />
+              </button>
+            </li>
+            {% endfor %}
+          </ul>
+          <figure class="gallery-main">
+            <img
+              id="gallery-image"
+              src="{{ images[0].src if images else '' }}"
+              alt="{{ images[0].alt if images else product.name }}"
+              width="600"
+              height="600"
+            />
+          </figure>
+        </section>
+
+        {# ---------- buy box ---------- #}
+        <section class="buybox" aria-label="Purchase">
+          <h1 id="product-name">{{ product.name }}</h1>
+          <p class="brandline">
+            by <a href="/static/product">{{ product.brand }}</a>
+            <span aria-hidden="true">·</span>
+            SKU <span id="product-sku">{{ product.sku }}</span>
+          </p>
+
+          {#- Rating: a numeric rating node plus a star string. The rating value
+              is a decimal string, so a collector must not parse the stars. #}
+          <div class="rating-line">
+            <span class="stars" aria-hidden="true">★★★★★</span>
+            <span class="rating-value" id="rating-value">{{ product.rating }}</span>
+            <span class="rating-sep">/ 5</span>
+            <a href="#reviews-section" id="review-count">{{ product.review_count }} reviews</a>
+          </div>
+
+          {#- Several price-shaped nodes: only #current-price is the price to
+              monitor. The others are real-world decoys (MSRP, per-unit,
+              instalments) that a naive selector happily picks up. #}
+          <div class="price-block">
+            <div class="price-row">
+              <span id="current-price">{{ product.current_price }}</span>
+              <span class="price-currency" id="currency">{{ product.currency }}</span>
+              <span id="original-price">{{ product.original_price }}</span>
+              <span class="discount-badge" id="discount-badge">{{ discount_percent }}% off</span>
+            </div>
+            <p class="price-note installment-price">
+              or 4 interest-free payments of <strong>{{ installment_price }}</strong> with
+              <span>ShopPay</span>
+            </p>
+            <p class="price-note unit-price">
+              <strong>{{ unit_price }}</strong> per 100 g
+            </p>
+            <p class="price-note msrp-price" data-msrp="{{ product.original_price }}">
+              List price {{ product.original_price }} {{ product.currency }} — savings
+              {{ savings }}
+            </p>
+          </div>
+
+          <div class="stock-line" data-stock="{{ product.stock_status }}">
+            <span class="stock-dot" aria-hidden="true"></span>
+            <span id="stock-status">{{ stock_label }}</span>
+            {% if product.stock_status == "low_stock" %}
+            <span class="stock-count">only {{ product.stock_count }} left</span>
+            {% endif %}
+          </div>
+
+          <div class="variant-group">
+            <h2>Packaging</h2>
+            <div class="variant-options" role="group" aria-label="Packaging">
+              {% for variant in color_variants %}
+              <button
+                type="button"
+                class="variant-option"
+                data-variant-id="{{ variant.id }}"
+                aria-pressed="{{ 'true' if loop.first else 'false' }}"
+                {% if not variant.available %}disabled{% endif %}
+              >{{ variant.label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="variant-group">
+            <h2>Size</h2>
+            <div class="variant-options" role="group" aria-label="Size">
+              {% for variant in size_variants %}
+              <button
+                type="button"
+                class="variant-option"
+                data-variant-id="{{ variant.id }}"
+                aria-pressed="{{ 'true' if variant.id == 'size-1kg' else 'false' }}"
+                {% if not variant.available %}disabled{% endif %}
+              >{{ variant.label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <p class="selected-variant" id="selected-variant">
+            Selected: <strong>{{ default_color.label }}</strong> / <strong>{{ default_size.label }}</strong>
+          </p>
+
+          <div class="buy-actions">
+            <div class="quantity">
+              <button type="button" id="qty-decrease" aria-label="Decrease quantity">−</button>
+              <input id="qty" type="text" inputmode="numeric" value="1" aria-label="Quantity" />
+              <button type="button" id="qty-increase" aria-label="Increase quantity">+</button>
+            </div>
+            <button type="button" class="btn-primary" id="add-to-cart" {% if product.stock_status == "out_of_stock" %}disabled{% endif %}>
+              {{ "Notify me" if product.stock_status == "out_of_stock" else "Add to cart" }}
+            </button>
+            <button type="button" class="btn-secondary" id="add-to-wishlist">Save</button>
+          </div>
+
+          <ul class="highlights">
+            {% for highlight in product.highlights %}
+            <li>{{ highlight }}</li>
+            {% endfor %}
+          </ul>
+
+          <p class="delivery-note">
+            Ships in 1–2 business days. Returns accepted within 30 days.
+          </p>
+        </section>
+      </div>
+
+      {# ---------- description ---------- #}
+      <section class="section-block" id="description">
+        <h2>About this coffee</h2>
+        <p>{{ product.description }}</p>
+      </section>
+
+      {# ---------- specs ---------- #}
+      <section class="section-block" id="specs">
+        <h2>Specifications</h2>
+        <table class="spec-table">
+          <caption>Product specifications</caption>
+          <tbody>
+            {% for spec in product.specs %}
+            <tr>
+              <th scope="row">{{ spec.label }}</th>
+              <td>{{ spec.value }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      {# ---------- reviews (client-rendered, lazily paged) ---------- #}
+      <section class="section-block" id="reviews-section">
+        <h2>Customer reviews</h2>
+        <div class="reviews-summary">
+          <span class="reviews-average" id="reviews-average">{{ product.rating }}</span>
+          <span>
+            <span class="stars" aria-hidden="true">★★★★★</span><br />
+            Based on <span id="reviews-total">{{ product.review_count }}</span> verified reviews
+          </span>
+        </div>
+
+        {#- data-ready is set by product.js only after the first page of reviews
+            has actually been rendered; the skeletons below must never look
+            ready. #}
+        <div id="reviews" data-review-page-size="{{ review_page_size }}">
+          <ul id="reviews-list">
+            <li class="review-skeleton" aria-hidden="true"></li>
+            <li class="review-skeleton" aria-hidden="true"></li>
+          </ul>
+          <div class="reviews-footer">
+            <button type="button" id="load-more-reviews" hidden>Load more reviews</button>
+            <span id="reviews-status" data-state="pending">Loading reviews…</span>
+          </div>
+        </div>
+      </section>
+
+      {# ---------- recommendations ---------- #}
+      <section class="section-block" id="recommendations">
+        <h2>You may also like</h2>
+        <div class="reco-grid">
+          {% for reco in recommendations %}
+          <article class="reco-card">
+            <img src="{{ reco.src }}" alt="{{ reco.alt }}" loading="lazy" width="180" height="180" />
+            <div class="reco-body">
+              <p class="reco-name">{{ reco.name }}</p>
+              <p class="reco-price">{{ reco.price }}</p>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
     </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <span>{{ product.brand }} — fixture shop for collector verification.</span>
+        <span>Prices in {{ product.currency }}. No real orders are placed.</span>
+      </div>
+    </footer>
+
+    <script src="/static/assets/product.js"></script>
   </body>
 </html>

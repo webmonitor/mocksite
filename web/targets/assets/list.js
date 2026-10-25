@@ -20,7 +20,6 @@
     if (!tbody) throw new Error('missing #inventory tbody')
     tbody.textContent = ''
 
-    var priceClass = options.itemPrice === 'renamed' ? 'cost' : 'price'
     for (var index = 0; index < items.length; index += 1) {
       var item = items[index]
       var row = document.createElement('tr')
@@ -36,7 +35,7 @@
       nameCell.textContent = item.name
 
       var priceCell = document.createElement('td')
-      priceCell.className = priceClass
+      priceCell.className = 'price'
       priceCell.textContent = item.price
 
       row.appendChild(idCell)
@@ -62,7 +61,7 @@
       nameCell.className = 'name'
       nameCell.textContent = item.name
       var priceCell = document.createElement('td')
-      priceCell.className = PAGE.itemPrice === 'renamed' ? 'cost' : 'price'
+      priceCell.className = 'price'
       priceCell.textContent = item.price
 
       row.appendChild(idCell)

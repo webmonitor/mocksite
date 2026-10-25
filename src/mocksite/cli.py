@@ -59,7 +59,7 @@ def _server(app: object, host: str, port: int, level: str, *, signals: bool) -> 
 
 async def serve(settings: Settings) -> None:
     store = _build_store()
-    site_app = create_site_app(store)
+    site_app = create_site_app(store, settings.target_assets)
     admin_app = create_admin_app(
         store,
         settings.token,

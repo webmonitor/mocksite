@@ -18,10 +18,7 @@
       .then(function (data) {
         var app = global.Vue.createApp({
           data: function () {
-            return {
-              items: data.items,
-              itemPrice: shared.page.itemPrice,
-            }
+            return { items: data.items }
           },
           template:
             '<div>' +
@@ -32,7 +29,7 @@
             '<tr v-for="item in items" :key="item.id + \'-\' + item.name" class="item" :data-id="item.id">' +
             '<td class="id">{{ item.id }}</td>' +
             '<td class="name">{{ item.name }}</td>' +
-            '<td :class="itemPrice === \'renamed\' ? \'cost\' : \'price\'">{{ item.price }}</td>' +
+            '<td class="price">{{ item.price }}</td>' +
             '</tr>' +
             '</tbody>' +
             '</table>' +

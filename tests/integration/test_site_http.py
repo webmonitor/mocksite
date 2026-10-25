@@ -50,23 +50,25 @@ async def test_ssr_page_reflects_current_state(stack: Stack) -> None:
     assert "Renamed Coffee" in response.text
 
 
-async def test_empty_value_renders_empty_price_node(stack: Stack) -> None:
-    await _set(stack, {"presentation": {"product_price": "empty"}})
-    body = (await stack.site.get("/ssr/product")).text
-    assert 'id="current-price"></span>' in body
+async def test_presentation_section_is_rejected(stack: Stack) -> None:
+    """Structural breakage is out of scope: the section no longer exists."""
+    response = await stack.admin.patch(
+        "/_admin/state", json={"presentation": {"product_price": "missing"}}, headers=AUTH
+    )
+    assert response.status_code == 400
+    assert (await stack.site.get("/ssr/product")).status_code == 200
 
 
-async def test_missing_node_removes_price_element(stack: Stack) -> None:
-    await _set(stack, {"presentation": {"product_price": "missing"}})
-    body = (await stack.site.get("/ssr/product")).text
-    assert "current-price" not in body
-
-
-async def test_structure_break_renames_price_id(stack: Stack) -> None:
-    await _set(stack, {"presentation": {"product_price": "renamed"}})
-    body = (await stack.site.get("/ssr/product")).text
-    assert "replacement-current-price" in body
-    assert 'id="current-price"' not in body
+async def test_page_structure_is_identical_across_data_scenarios(stack: Stack) -> None:
+    """Every scenario must keep the same DOM skeleton; only values move."""
+    markers = ('id="current-price"', 'id="rating-value"', "gallery-image", "reviews-list")
+    seen: dict[str, list[str]] = {}
+    for name in ("baseline", "price_change", "stock_out", "rating_change", "reviews_empty"):
+        await stack.admin.post(f"/_admin/scenario/{name}", headers=AUTH)
+        body = (await stack.site.get("/ssr/product")).text
+        seen[name] = [marker for marker in markers if marker in body]
+    baseline = seen["baseline"]
+    assert all(present == baseline for present in seen.values()), seen
 
 
 async def test_api_data_matches_state(stack: Stack) -> None:

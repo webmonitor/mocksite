@@ -41,12 +41,13 @@ def test_scenario_names_are_unique() -> None:
         "baseline",
         "no_change",
         "price_change",
+        "price_increase",
         "item_price_change",
-        "empty_value",
-        "missing_node",
-        "structure_break",
+        "stock_out",
+        "rating_change",
+        "reviews_empty",
+        "reviews_grow",
         "empty_list",
-        "field_rename",
         "duplicate_rows",
         "pagination_grow",
         "outage",
@@ -67,7 +68,7 @@ def test_price_change_moves_only_the_product_price() -> None:
     assert state.business.product.current_price == Decimal("96.00")
     assert state.business.product.original_price == DEFAULT_STATE.business.product.original_price
     assert state.business.items == DEFAULT_STATE.business.items
-    assert state.presentation == DEFAULT_STATE.presentation
+    assert state.faults == DEFAULT_STATE.faults
 
 
 def test_item_price_change_moves_only_row_a() -> None:
@@ -99,19 +100,41 @@ def test_pagination_grow_adds_two_rows_and_keeps_page_size() -> None:
     assert state.business.page_count == 3
 
 
-@pytest.mark.parametrize(
-    ("name", "field", "value"),
-    [
-        ("empty_value", "product_price", "empty"),
-        ("missing_node", "product_price", "missing"),
-        ("structure_break", "product_price", "renamed"),
-        ("field_rename", "item_price", "renamed"),
-    ],
-)
-def test_presentation_scenarios_keep_business_data(name: str, field: str, value: str) -> None:
-    state = _build(name)
-    assert getattr(state.presentation, field) == value
-    assert state.business == DEFAULT_STATE.business
+def test_price_increase_moves_only_the_product_price() -> None:
+    state = _build("price_increase")
+    assert state.business.product.current_price == Decimal("158.00")
+    assert state.business.items == DEFAULT_STATE.business.items
+
+
+def test_stock_out_moves_only_stock_fields() -> None:
+    state = _build("stock_out")
+    assert state.business.product.stock_status == "out_of_stock"
+    assert state.business.product.stock_count == 0
+    # Price and lists must be untouched: this is a data scenario, not a shape one.
+    assert state.business.product.current_price == DEFAULT_STATE.business.product.current_price
+    assert state.business.items == DEFAULT_STATE.business.items
+
+
+def test_rating_change_moves_only_rating_fields() -> None:
+    state = _build("rating_change")
+    assert state.business.product.rating == Decimal("3.2")
+    assert state.business.product.review_count == 131
+    assert state.business.product.current_price == DEFAULT_STATE.business.product.current_price
+
+
+def test_reviews_empty_clears_reviews_but_keeps_the_product() -> None:
+    state = _build("reviews_empty")
+    assert state.business.reviews == ()
+    assert state.business.product == DEFAULT_STATE.business.product
+
+
+def test_reviews_grow_appends_without_touching_the_product() -> None:
+    state = _build("reviews_grow")
+    assert len(state.business.reviews) == len(DEFAULT_STATE.business.reviews) + 2
+    assert state.business.reviews[: len(DEFAULT_STATE.business.reviews)] == (
+        DEFAULT_STATE.business.reviews
+    )
+    assert state.business.product == DEFAULT_STATE.business.product
 
 
 def test_outage_sets_fault_only() -> None:

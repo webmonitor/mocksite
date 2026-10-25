@@ -39,13 +39,17 @@ RUN groupadd --gid 10001 mocksite \
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
+# Frontend assets are force-included into the wheel from web/targets, so they
+# must exist at build time. They are not copied into the final image: the
+# installed package carries its own copy under mocksite/_static.
+COPY web/targets ./web/targets
 # hatchling is a build-time requirement (declared in pyproject's [build-system]),
 # not a runtime dependency, so it is not in requirements.txt. Pin it explicitly
 # instead of relying on whatever isolation happens to fetch.
 RUN pip install "hatchling>=1.27,<2" \
     && pip install --no-deps --no-build-isolation . \
     && pip uninstall -y hatchling \
-    && rm -rf /app/src
+    && rm -rf /app/src /app/web
 
 # Built admin bundle. The site serves it from MOCKSITE_ADMIN_DIST.
 COPY --from=web /web/dist /app/admin

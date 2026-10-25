@@ -11,9 +11,20 @@ export type Price = string
 export interface Product {
   id: string
   name: string
+  brand: string
+  sku: string
   current_price: Price
   original_price: Price
   currency: string
+  rating: Price
+  review_count: number
+  stock_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'preorder'
+  stock_count: number
+  description: string
+  highlights: string[]
+  images: { id: string; alt: string; src: string; color: string }[]
+  variants: { id: string; label: string; kind: 'color' | 'size'; available: boolean }[]
+  specs: { label: string; value: string }[]
 }
 
 export interface Item {
@@ -22,20 +33,25 @@ export interface Item {
   price: Price
 }
 
+export interface Review {
+  id: string
+  author: string
+  rating: number
+  date: string
+  title: string
+  body: string
+  verified: boolean
+}
+
 export interface BusinessData {
   product: Product
   items: Item[]
   page_size: number
+  reviews: Review[]
+  review_page_size: number
 }
 
-export type ProductPriceRendering = 'normal' | 'empty' | 'missing' | 'renamed'
-export type ItemPriceRendering = 'normal' | 'renamed'
 export type FaultKind = 'none' | 'outage'
-
-export interface Presentation {
-  product_price: ProductPriceRendering
-  item_price: ItemPriceRendering
-}
 
 export interface Faults {
   kind: FaultKind
@@ -45,21 +61,34 @@ export interface Faults {
 export interface StateDocument {
   revision: number
   business: BusinessData
-  presentation: Presentation
   faults: Faults
 }
+
+export type ScenarioGroup = 'baseline' | 'price' | 'content' | 'list' | 'fault'
 
 export interface Scenario {
   name: string
   description: string
   affects: string[]
   pages: string[]
+  /** Human-facing Chinese title, authored on the server. */
+  title: string
+  /** One sentence describing what a collector will observe. */
+  outcome: string
+  /** Which business data a collector should see change. */
+  data_impact: string
+  group: ScenarioGroup
+  compare_with_baseline: boolean
 }
+
+export type SelectorRole = 'primary' | 'ready' | 'supporting' | 'decoy'
 
 export interface Selector {
   label: string
   css: string
   xpath: string
+  role: SelectorRole
+  note: string
 }
 
 export interface TargetPage {
@@ -107,6 +136,26 @@ export class ApiError extends Error {
   /** Field errors keyed by dotted location, e.g. `business.product.name`. */
   fieldErrors(): Map<string, string> {
     return new Map(this.errors.map((error) => [error.loc, error.msg]))
+  }
+
+  /** A message safe to show a user: never a raw status code alone. */
+  get humanMessage(): string {
+    switch (this.code) {
+      case 'network_error':
+        return '无法连接到管理服务，请确认服务仍在运行。'
+      case 'unauthorized':
+        return 'token 无效或已过期，请重新连接。'
+      case 'invalid_state':
+        return '提交的内容不符合校验规则，请检查标红的字段。'
+      case 'unknown_scenario':
+        return '该场景不存在，可能已被移除。'
+      case 'body_too_large':
+        return '请求体过大。'
+      case 'unsupported_media_type':
+        return '请求格式不被接受。'
+      default:
+        return `请求失败（${this.code}）。`
+    }
   }
 }
 
@@ -175,7 +224,8 @@ export const api = {
 
   reset: () => request<StateChange>('/_admin/reset', { method: 'POST' }),
 
-  scenarios: (signal?: AbortSignal) => request<{ scenarios: Scenario[] }>('/_admin/scenarios', { signal }),
+  scenarios: (signal?: AbortSignal) =>
+    request<{ scenarios: Scenario[] }>('/_admin/scenarios', { signal }),
 
   applyScenario: (name: string) =>
     request<StateChange>(`/_admin/scenario/${encodeURIComponent(name)}`, { method: 'POST' }),

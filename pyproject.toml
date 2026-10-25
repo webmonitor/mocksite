@@ -33,9 +33,15 @@ dev = [
 packages = ["src/mocksite"]
 include = [
   "src/mocksite/site/templates/*.html",
-  "src/mocksite/site/static/assets/*.js",
-  "src/mocksite/site/static/vendor/*",
 ]
+
+# Frontend assets live under web/ (they are not Python), so the wheel pulls
+# them in from there and lands them inside the package. `site/routes.py`
+# resolves `_static` first and only falls back to the repo's `web/targets`
+# for an editable install.
+[tool.hatch.build.targets.wheel.force-include]
+"web/targets/assets" = "mocksite/_static/assets"
+"web/targets/vendor" = "mocksite/_static/vendor"
 
 [project.scripts]
 mocksite = "mocksite.cli:main"

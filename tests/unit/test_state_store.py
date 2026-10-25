@@ -167,7 +167,6 @@ def test_scenario_is_idempotent_in_content() -> None:
     _, first = store.apply_scenario("item_price_change")
     _, second = store.apply_scenario("item_price_change")
     assert first.business == second.business
-    assert first.presentation == second.presentation
     assert second.revision == first.revision + 1
 
 

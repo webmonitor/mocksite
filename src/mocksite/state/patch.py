@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from mocksite.state.errors import StateValidationError
 from mocksite.state.models import State
 
-MUTABLE_SECTIONS = ("business", "presentation", "faults")
+MUTABLE_SECTIONS = ("business", "faults")
 READ_ONLY_KEYS = ("revision",)
 
 

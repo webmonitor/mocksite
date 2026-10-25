@@ -45,7 +45,6 @@ def state_document(state: State) -> dict[str, Any]:
     return {
         "revision": state.revision,
         "business": state.business.model_dump(mode="json"),
-        "presentation": state.presentation.model_dump(mode="json"),
         "faults": state.faults.model_dump(mode="json"),
     }
 
@@ -182,6 +181,11 @@ def create_admin_app(
                         "description": scenario.description,
                         "affects": list(scenario.affects),
                         "pages": list(scenario.pages),
+                        "title": scenario.title,
+                        "outcome": scenario.outcome,
+                        "data_impact": scenario.data_impact,
+                        "group": scenario.group,
+                        "compare_with_baseline": scenario.compare_with_baseline,
                     }
                     for scenario in store.scenarios()
                 ]

@@ -1,199 +1,251 @@
 # webmonitor-mocksite
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-![status: spec](https://img.shields.io/badge/status-spec%20%2F%20unimplemented-orange)
 
-为 [WebMonitor-Agent](https://github.com/webmonitor/WebMonitor-Agent) 与 [WebMonitor](https://github.com/webmonitor/WebMonitor) 两个监控平台提供**可控制、可复现的被采集目标网站**。
+为 [WebMonitor-Agent](https://github.com/webmonitor/WebMonitor-Agent) 和 [WebMonitor](https://github.com/webmonitor/WebMonitor) 提供可控制、可复现的监控目标网站，用于开发、回归验证和演示。
 
-一个容器，多种前端技术形态的真实网页；通过管理 API 任意切换页面“发生什么”，用来驱动、验证两个平台的采集、变化检测与告警链路。
+开发者先让监控平台采集正常页面、建立基线，再通过管理 API 改变价格、列表、页面结构或响应行为，检查平台实际提取了什么、是否正确识别变化，以及失败后能否恢复。
 
-> **状态：设计规格。** 本仓库目前只有本 README —— 它是完整的实现蓝图。接口、页面、场景、校验点均已定型，欢迎按此实现；提 PR 前请先跑通「验收清单」。
+> **当前状态：规划阶段，尚未实现。** 仓库包含项目说明、交付计划、变更记录和 LICENSE，没有应用代码、Docker 配置或已发布镜像。下文定义拟实现的行为与交付顺序；接口及路径均为目标契约，不代表当前可用。
 
----
+文档入口：[交付计划与任务进度](plan/README.md) · [变更记录](changelog/README.md)。本 README 定义目标契约，`plan/` 跟踪待实施任务，`changelog/` 记录已经发生的变更。
 
-## 1. 为什么需要它
+## 1. 项目目标与边界
 
-两个监控平台的测试痛点：
+mocksite 负责产生受控输入，并给出可核对的页面状态；监控平台负责采集、提取、比较、调度和通知。
 
-| 痛点 | mocksite 的回答 |
+| 需要验证的问题 | mocksite 提供的条件 |
 |---|---|
-| 真实网站内容不受控，无法稳定复现“变化” | 场景（scenario）一键切换，内容变化完全确定 |
-| 不同前端渲染方式（CSR/SSR/懒加载）采集行为不同 | 一个站点内提供 static / SSR / React / Vue / 动态加载五类页面 |
-| 想测失败路径：超时、500、选择器失效、反爬 | 每种失败都是一个显式状态开关 |
-| WebMonitor 用 XPath（Selenium），Agent 用 CSS 选择器（HTTP/Playwright） | 每个页面同时标注两套选择器，双端共用同一目标 |
+| 内容是否真的发生变化 | 固定初始数据与明确的状态切换 |
+| HTTP 与浏览器采集有何差异 | 无 JS 页面、React/Vue 客户端渲染页面、动态列表 |
+| 空内容、节点缺失和结构变化能否区分 | 独立场景，每次只改变指定条件 |
+| 分页是否完整、重复记录如何处理 | 固定顺序、稳定行 ID、可控分页与重复行 |
+| 故障期间及恢复后平台如何表现 | 可显式启停的 500、延迟和确定性失败序列 |
+| 出口限制是否生效 | 固定的私网重定向和子资源探针 |
 
-与 WebMonitor-Agent 自带的 `tests/fixtures/site.py`（smoke 专用、最小化）不同，本项目是**独立的、面向日常开发与演示的**目标站：场景更丰富、可直接 docker compose 挂进两个平台的 compose 网络。
+首要接入目标是 WebMonitor-Agent；页面同时提供 CSS 与 XPath 选择器，供 legacy WebMonitor 验证其已有能力。两平台的错误码、重试策略和告警能力分别验收，不假定完全一致。
 
-## 2. 页面形态（被采集目标）
+本项目不实现监控引擎、邮件发送、多用户与权限管理、任意脚本执行或真实网站的反爬绕过。**首轮交付必须包含可用的管理后台和管理 API**：日常开发与演示通过浏览器操作，自动化验证通过同一套 API 控制。
 
-所有页面共享同一份“商品数据”（见 §3 状态模型），保证同一场景在五种形态下产生**语义相同**的内容变化。
+WebMonitor-Agent 已有 `tests/fixtures/site.py`，服务于自身的 smoke 验证。mocksite 是独立的开发目标站；先复用其稳定数据与选择器约定，不在首轮交付中替换既有 fixture。
 
-| 路径 | 形态 | 渲染方式 | 考察能力 |
-|---|---|---|---|
-| `/static/product` | 纯静态 HTML | 服务端直出，无 JS | HTTP 路径基线 |
-| `/ssr/product` | 服务端渲染 | 每次请求实时渲染 | SSR 内容、无 JS 依赖 |
-| `/react/list` | React 18 SPA (CSR) | UMD React + fetch `/api/data` 渲染 | 等待选择器、JS 渲染后提取 |
-| `/vue/list` | Vue 3 SPA (CSR) | UMD Vue + fetch 渲染 | 同上，换框架 |
-| `/dynamic/deals` | 动态加载列表 | 懒加载 + “加载更多”按钮分页 | `wait_for_selector` / `click_next` 浏览器步骤、翻页聚合 |
-| `/api/data` | JSON 数据源 | — | HTTP 型监控直连数据 |
-| `/slow?ms=3000` | 慢响应 | 服务端延迟后返回 | 超时与重试策略 |
-| `/flaky` | 抖动端点 | 按 `failure_rate` 随机 500/200 | 瞬时故障→恢复场景 |
-| `/redirect-private?target=loopback\|metadata\|ipv6` | 重定向到私网/元数据地址 | 302 | **安全验证**：出口必须拒绝（Agent egress 容器、legacy 白名单） |
-| `/private-resource` | 页面内引用私网资源 | `<script src="http://127.0.0.1:9/…">` | 混合内容/私网资源探测 |
+## 2. 使用流程
 
-前端资产：React/Vue UMD 包 **vendored**（构建时从官方 npm tarball 下载并校验 SHA-512，写死 `assets/vendor/manifest.json`），**运行时不依赖任何 CDN** —— 站点必须能在离线内网完整工作。
+一次完整验证按以下顺序执行：
 
-每个列表页顶部提供固定结构：
+1. 打开管理后台，输入管理 token，重置 mocksite 并查看状态及版本，确认使用默认数据。
+2. 在监控平台配置目标 URL 和选择器，完成首次采集并确认基线已建立。
+3. 在后台选择并应用一个场景，查看返回的前后状态版本；自动化脚本执行相同管理 API 请求。
+4. 触发或等待下一次采集，核对页面内容、提取结果和平台事件。
+5. 故障场景结束后显式恢复，再采集一次，确认恢复后的行为。
 
-```html
-<div id="app" data-framework="react">
-  <table id="inventory">
-    <tbody>
-      <tr class="item" data-id="A"><td class="name">Alpha</td><td class="price">10.00</td></tr>
-      ...
-    </tbody>
-  </table>
-  <p id="status" role="status">…</p>
-  <button id="load-more">Load more</button>  <!-- 仅 /dynamic/deals -->
-</div>
-```
+mocksite 不负责等待平台采集完成。验证脚本必须以平台的运行结果为准，不能仅凭固定休眠时间判定成功。邮件链路只在显式启用邮件验证时检查。
 
-**选择器对照（写入每个页面文档的固定注释，供两个平台的监控配置直接复制）：**
+一个实例只服务一组串行场景。需要并行验证时，为每组测试启动独立实例，避免共享状态相互覆盖。
 
-| 字段 | CSS（WebMonitor-Agent） | XPath（WebMonitor） |
+## 3. 页面与数据契约
+
+### 3.1 页面形态
+
+| 目标路径 | 内容与渲染方式 | 主要验证点 |
 |---|---|---|
-| 商品价格 | `#product #current-price` | `//*[@id="current-price"]` |
-| 列表行 | `#inventory tr.item` | `//*[@id="inventory"]/*[@class="item"]` |
-| 行内价格 | `tr.item td.price` | 相对 `.//td[@class="price"]` |
+| `/static/product` | 状态提交时生成完整 HTML，请求时直接返回；无 JS | HTTP 提取基线 |
+| `/ssr/product` | 每次请求根据当前状态生成完整 HTML；无 JS | 服务端渲染内容提取 |
+| `/react/list` | React 在浏览器中请求数据并渲染列表 | JS 执行、就绪等待、列表提取 |
+| `/vue/list` | Vue 在浏览器中请求数据并渲染列表 | 相同数据在另一框架下的采集 |
+| `/dynamic/deals` | 浏览器加载首屏，点击“加载更多”追加下一页 | 异步加载、分页聚合、结束判断 |
+| `/api/data` | 返回当前商品与列表的 JSON 数据 | 前端数据源与人工核对 |
+| `/health` | 返回 `{"status":"ok"}` | 进程存活，不受场景故障影响 |
 
-## 3. 状态模型（单一事实源）
+`/static/product` 与 `/ssr/product` 使用同一个商品对象；三种列表页面使用同一组列表数据。商品价格和列表行价格是不同字段，不要求五种页面提取出相同价格。
 
-全部页面读取同一份内存状态。**所有价格一律十进制字符串**（与两个平台的 Decimal 约定一致，禁止 float）：
+所有业务数据响应携带 `X-Mocksite-Revision`，标识此次读取的状态版本。CSR 的 HTML 外壳不代表列表已就绪：数据加载成功后才设置 `data-ready="true"`，并在渲染根节点记录实际数据版本 `data-revision`。加载失败时显示错误状态，不设置就绪标记。
 
-```jsonc
+`/api/data` 是目标站的数据源，不代表监控平台已经支持直接监控 JSON。直接采集 JSON 的能力需单独确认。
+
+### 3.2 默认数据
+
+```json
 {
-  // 商品数据（五种页面形态共享）
-  "current_price": "128.50",       // 十进制字符串
-  "original_price": "199.00",
-  "currency": "USD",               // 三位大写字母
-  "items": [                       // ≤100 行
-    {"id": "A", "name": "Alpha", "price": "10.00"}
+  "product": {
+    "id": "coffee",
+    "name": "Fixture Coffee",
+    "current_price": "128.50",
+    "original_price": "199.00",
+    "currency": "USD"
+  },
+  "items": [
+    {"id": "A", "name": "Alpha", "price": "10.00"},
+    {"id": "B", "name": "Beta", "price": "20.00"},
+    {"id": "C", "name": "Gamma", "price": "30.00"}
   ],
-  "total_pages": 3,                // /dynamic/deals 分页总数
-
-  // 失败注入
-  "http_500": false,               // 全站页面 500
-  "empty": false,                  // 数据为空（≠ 缺失：测 “missing ≠ empty”）
-  "slow_ms": 0,                    // 人为延迟 0..30000
-  "flaky_failure_rate": 0.0,       // /flaky 专用 0.0..1.0
-
-  // 结构变化
-  "selector_changed": false,       // 把 id 换成 replacement-current-price（选择器失效）
-  "rename_field": false,           // td.price → td.cost（字段级结构漂移）
-  "duplicate": false,              // 注入重复行（覆盖校验）
-
-  // 行为
-  "private_resource": false        // 页面内引用私网资源
+  "page_size": 2
 }
 ```
 
-**不变量**（实现时必须校验）：
-- 价格字段：十进制、有限、非负、≤64 字符；
-- `items[].id/name`：非空字符串 ≤256 字符；
-- 未知键拒绝 PATCH（防拼写错误静默生效）。
+数据约束：
 
-## 4. 管理（控制面）API
+- 价格以十进制字符串传输与渲染，后端使用 Decimal；非负、有限，最多 64 字符，不经过浮点转换。
+- 商品与列表行的 ID、名称是非空字符串，最多 256 字符；币种为三个大写 ASCII 字母。
+- 列表最多 100 行，默认 ID 唯一、顺序固定；重复行只能通过专用故障场景注入。
+- `page_size` 是 1–100 的整数；页数由列表长度计算，不维护可与数据冲突的 `total_pages`。
+- 动态页面首次加载第一页；每次点击只追加下一页，加载期间禁用按钮，末页后隐藏按钮。空列表也应进入就绪状态。
+- 所有插入 HTML 的文本必须转义；CSR 使用框架的文本渲染能力，不把数据解释为 HTML。
 
-前缀 `/_admin/`，**必须**由环境变量 `MOCKSITE_TOKEN`（≥32 随机字符）开启 Bearer 认证；未配置 token 时拒绝所有管理请求（宁可拒绝，不可裸奔）。管理端口不发布到宿主（见 §6）。
+### 3.3 选择器约定
 
-| 方法 | 路径 | 作用 |
+正常状态的页面提供稳定选择器。结构破坏场景才允许改变对应节点。
+
+| 目标 | CSS | XPath |
 |---|---|---|
-| `GET` | `/_admin/state` | 读当前完整状态 |
-| `PATCH` | `/_admin/state` | 部分更新（深度合并，逐键校验） |
-| `PUT` | `/_admin/state` | 整体替换 |
-| `POST` | `/_admin/reset` | 恢复默认状态 |
-| `POST` | `/_admin/scenario/{name}` | 一键执行预设场景（§5） |
-| `GET` | `/_admin/scenarios` | 列出全部场景及其效果说明 |
-| `GET` | `/health` | 无认证健康检查 `{"status":"ok"}` |
+| 商品现价 | `#product #current-price` | `//*[@id="product"]//*[@id="current-price"]` |
+| 列表就绪标记 | `#app[data-ready="true"]` | `//*[@id="app" and @data-ready="true"]` |
+| 列表行 | `#inventory tbody tr.item` | `//*[@id="inventory"]/tbody/tr[contains(concat(' ', normalize-space(@class), ' '), ' item ')]` |
+| 行内价格（相对当前行） | `td.price` | `.//td[contains(concat(' ', normalize-space(@class), ' '), ' price ')]` |
+| 下一页按钮 | `#load-more` | `//*[@id="load-more"]` |
 
-安全基线（沿用 fixture 的纪律）：
-- 日志**不记录**任何 token、请求路径或 query；
-- `PATCH` body ≤ 64KiB、拒绝 `Transfer-Encoding`；
-- 管理响应与页面响应都带 `Cache-Control: no-store`。
+列表行使用 `data-id` 保存稳定业务 ID。选择器、示例 HTML 和实际页面需要一起验收，避免文档中的 XPath 与真实 DOM 层级不符。
 
-## 5. 预设场景
+React/Vue 及其他运行时资产随站点分发，不依赖 CDN。依赖版本、来源、完整性校验和许可证信息应随资产记录；离线要求指镜像准备完成后的运行阶段。
 
-每个场景 = 一组受控状态转移，全部**确定性**（除 `/flaky` 显式随机外）：
+## 4. 状态与场景
 
-| 场景名 | 动作 | 验证点（两平台各自应表现） |
+### 4.1 状态规则
+
+单实例使用进程内状态，包含业务数据、场景控制项和只读 `revision`。采用单进程服务；重启后恢复默认数据，版本重新计数。
+
+每次成功写入都在锁内完成校验、状态提交及版本递增；请求读取一致的状态快照。非法输入不修改状态，也不推进版本。静态页面缓存随状态一起提交，不能出现“状态已更新、静态页面仍旧”的窗口。
+
+管理 API 返回的版本用于串行验证和结果关联，不承担多客户端并发编辑控制。多请求的浏览器采集期间应保持状态不变；若发现页面数据版本不一致，验证脚本应重新建立该次验证条件。
+
+### 4.2 场景语义
+
+每个预设场景都从默认状态构造完整目标状态，再一次性提交。重复应用同一场景得到相同内容，只有版本递增；场景之间不隐式叠加。组合条件通过状态 PATCH 显式设置。
+
+| 场景名 | 受控变化 | 核对重点 |
 |---|---|---|
-| `price_change` | `current_price` 128.50 → 96.00 | 变化检测、diff 正确、（配置邮件时）告警 |
-| `no_change` | 重置后仅触碰无关字段 | 不产生事件 |
-| `gone` | `empty=true` | 缺失处理：Agent “missing ≠ empty”语义；legacy 记录错误 |
-| `structure_break` | `selector_changed=true` | Agent 报 `extraction_*` 错误而非静默成功；legacy XPath 落空 |
-| `field_rename` | `rename_field=true` | 字段级 diff 识别“列名变了” |
-| `duplicate_rows` | `duplicate=true` | 覆盖/去重证明（Agent coverage 语义） |
-| `outage` | `http_500=true` → 60s 后自动恢复 | 故障→恢复两种告警、重试只对瞬时错误生效 |
-| `slow_site` | `slow_ms=8000` | 超时路径、租约/fencing 下的重试行为 |
-| `flaky_50` | `flaky_failure_rate=0.5` | 瞬时失败统计、最终成功 |
-| `pagination_grow` | `total_pages` 1→3，每页内容不同 | `click_next` 聚合完整性、翻页后 diff 基线 |
-| `ssr_vs_csr_drift` | 仅 `/react/list` 数据变化，`/static/product` 不变 | 单页面定向变化不影响其他监控 |
-| `private_egress` | 恢复 + `private_resource=true` | 出口安全：两平台都必须失败/拒绝，不得触达私网 |
+| `baseline` | 恢复默认数据和正常响应 | 基线输入明确，故障与计数器已清除 |
+| `no_change` | 保持默认业务数据，仅版本变化 | 在默认基线下，监控字段不变；版本元数据不应被误选为业务字段 |
+| `price_change` | 商品现价 `128.50` → `96.00` | 两个商品页均变化；列表不变 |
+| `item_price_change` | A 行价格 `10.00` → `12.50` | React、Vue、动态列表的同一行均变化 |
+| `empty_value` | 保留现价节点，文本设为空字符串 | 空文本与正常价格可区分 |
+| `missing_node` | 移除现价节点 | 选择器无匹配，与空文本不同 |
+| `empty_list` | 列表数据变为 `[]` | 列表成功加载但无记录，与加载失败不同 |
+| `structure_break` | 现价节点 ID 改为 `replacement-current-price`，保留文本 | 原选择器失效；不会自动“理解”新结构 |
+| `field_rename` | 列表单元格类名 `price` → `cost`，保留文本 | 行存在但字段选择器失效，不等同于业务价格变化 |
+| `duplicate_rows` | 在输出列表末尾追加一条 A 行副本 | 重复业务 ID 的检测与覆盖校验 |
+| `pagination_grow` | 在默认列表后追加 D、E 行，页大小仍为 2 | 动态列表从两页增至三页，原有行保持稳定 |
+| `outage` | 目标页面及 `/api/data` 返回 500 | 采集失败如何记录；管理 API 仍可用于恢复 |
+| `slow_site` | 目标页面及 `/api/data` 延迟 8000ms | 配置的采集超时小于延迟时，实际超时行为 |
 
-实现要求：场景执行是**原子的**（一次锁内完成状态写入），并返回转移前后状态。
+`empty_value`、`missing_node` 和结构变化通过呈现控制项实现，不把非法价格写入业务数据。控制项使用互斥枚举表达同一字段的呈现状态，避免多个布尔开关互相冲突；完整字段 schema 随控制 API 实现交付。
 
-## 6. 运行
+故障不会在后台定时恢复。验证脚本观察到失败后，再调用 `baseline` 或 reset 恢复，消除“还没采集就恢复了”的时序不确定性。故障发生与恢复是否发送告警，由平台配置与现有能力决定。
 
-```sh
-# 构建并启动（仅暴露被采集端口，管理端口只在内部网络）
-export MOCKSITE_TOKEN="$(openssl rand -hex 32)"
-docker compose up --build -d
+### 4.3 后续扩展
 
-# 被采集端（宿主可见，供本地前端/HTTP worker 指向）
-curl http://localhost:9000/static/product
+以下能力在基础场景通过验收后增加，不阻塞首轮交付：
 
-# 管理（容器网络内，或显式发布的 127.0.0.1:9001）
-curl -H "Authorization: Bearer $MOCKSITE_TOKEN" \
-     -X POST http://127.0.0.1:9001/_admin/scenario/price_change
-```
+- **瞬时失败序列**：`/flaky` 使用固定序列，例如 `500, 500, 200`；按该端点的请求计数推进，序列耗尽后持续返回 200，reset 清零。不使用随机失败率；重试请求同样消耗序列元素。
+- **单请求延迟**：`/slow?ms=3000` 仅影响当前请求；只接受 0–30000 的整数，非法输入返回 400。此端点独立于全局延迟，避免延迟叠加。
+- **单页面覆盖**：按固定路由设置数据覆盖，用于 React 页面变化、Vue 页面不变等场景。覆盖必须显式展示在状态中，reset 清除；未实现前所有页面遵循共享数据规则。
+- **安全探针**：`/redirect-private?target=loopback|metadata|ipv6` 只接受固定枚举，不允许任意目标 URL；`/private-resource` 在页面内请求固定私网子资源。验证必须走监控平台的真实采集出口。
 
-端口约定：
-- **9000** — 被采集页面（可发布宿主或仅在 compose 内网）；
-- **9001** — 管理 API（默认只绑 `127.0.0.1`，绝不 `0.0.0.0`）。
+安全探针的验收目标是受限请求没有触达目标地址。子资源被阻止后，主页面仍可能提取成功；应结合出口拒绝记录或隔离探针的请求计数验证，不能仅以整次采集失败作为证据。
 
-单容器、无外部依赖（数据在内存，重启即重置 —— 这是特性：状态可复现）。
+## 5. 管理后台与 API 契约
 
-### 接入两个平台（compose 片段）
+### 5.1 管理后台（首轮必交付）
 
-```yaml
-# WebMonitor-Agent 的 compose overlay 示例
-services:
-  mocksite:
-    image: ghcr.io/webmonitor/mocksite:latest
-    networks: [trusted]          # 只在采集出口网络
-  http-worker:
-    environment:
-      MOCK_TARGET: http://mocksite:9000
-```
+后台入口为管理端口的 `/`，与管理 API 同源部署。开发者不需要编写 curl 请求，就能完成“查看状态 → 修改数据或切换场景 → 打开目标页面 → 恢复默认”的完整流程。
 
-WebMonitor legacy 同理：监控任务 URL 填 `http://mocksite:9000/...`，XPath 用 §2 对照表。
+| 功能区 | 首轮范围 | 操作结果 |
+|---|---|---|
+| 连接与认证 | 输入管理 token、连接状态、退出 | 认证成功后读取状态；认证失败显示错误，不展示受保护数据 |
+| 状态总览 | 当前版本、商品数据、列表数据、有效故障与呈现控制项、手动刷新 | 展示服务端实际状态；自定义修改后不继续把状态标为某个未修改的预设场景 |
+| 数据编辑 | 商品字段表单、列表行增删改、页大小编辑 | 提交前校验，保存成功后用服务端返回状态更新界面；价格始终按字符串处理 |
+| 场景与故障控制 | 展示已实现场景的影响范围、应用预设、编辑当前控制项、恢复默认 | 应用预设或重置前提示将覆盖当前状态；成功后展示前后版本及变化内容 |
+| 目标页面入口 | 列出已实现页面、用途、CSS/XPath，提供复制和新标签页打开 | 分别标明浏览器预览地址与平台采集地址，避免把容器主机名当作宿主可访问地址 |
+| 操作反馈 | 提交中、成功、字段错误、认证失效、网络失败 | 请求期间禁用重复提交；失败时保留编辑内容，不伪报保存成功 |
 
-## 7. 技术选型（建议，非强制）
+后台复用下述 API，不维护独立业务状态或另一套场景实现。未保存的表单内容与已生效状态明确区分；服务端校验是最终依据。管理请求结果未知时先刷新状态核对，不自动重放写入。
 
-- **服务端**：Python 3.12 标准库 `http.server`（对齐 fixture 风格）或 FastAPI —— 零/极低依赖优先；
-- **前端**：不引入构建链。React/Vue 用 vendored UMD 单文件；页面模板用 Python f-string（同 fixture）；
-- **容器**：`python:3.12-slim`，非 root 用户，只读根文件系统兼容。
+token 由使用者输入，只保存在当前页面内存中；刷新或退出后清除，不写入 URL、localStorage 或日志，也不内置进前端资产。未认证时只提供连接界面，状态与写操作仍由 API 认证保护。后台及其资产离线可用，不受目标站故障注入影响。
 
-## 8. 验收清单（实现 PR 必须逐条演示）
+### 5.2 管理 API
 
-- [ ] 五种页面形态 curl 均返回含 §2 固定结构的 HTML；React/Vue 页面离线可用（无外网请求）
-- [ ] `PATCH /_admin/state` 非法键/非法十进制 → 400，且状态不变
-- [ ] `price_change` 场景后，同一 CSS 与 XPath 选择器在 5 种页面取到一致新价格
-- [ ] `structure_break` 后 Agent 端提取报错（不静默成功）
-- [ ] `/redirect-private` 与 `/private-resource` 在两平台的采集路径上被拒绝
-- [ ] 无 token 时所有 `/_admin/*` → 403；日志无 token/路径
-- [ ] `docker compose up` 一次成功；管理端口未发布到 `0.0.0.0`
+页面服务与管理服务使用两个独立监听端口。页面端口不提供管理后台或挂载 `/_admin/*` 路由；所有管理 API 都需要 Bearer token。
 
-## 9. License
+| 方法 | 路径 | 目标行为 |
+|---|---|---|
+| `GET` | `/_admin/state` | 返回业务数据、控制项及当前版本 |
+| `PATCH` | `/_admin/state` | 部分修改数据或控制项，成功后返回完整状态 |
+| `POST` | `/_admin/reset` | 恢复默认数据、清除故障与计数器，推进版本 |
+| `GET` | `/_admin/scenarios` | 列出已实现的场景、影响范围与预期页面变化 |
+| `POST` | `/_admin/scenario/{name}` | 原子应用场景，返回变更前后完整状态（含版本） |
 
-CC BY-NC 4.0 —— 与 WebMonitor / WebMonitor-Agent 一致（非商业使用）。
+PATCH 中对象字段递归合并，数组整体替换；`null` 不表示删除且不允许作为字段值。`revision` 只读，未知键、类型错误、越界值和互斥条件冲突均返回 400，状态保持不变。未知场景返回 404。首轮不提供语义重复的整状态 PUT 接口。
+
+管理服务的实现要求：
+
+- 使用 `MOCKSITE_TOKEN`；未配置或不足 32 个非空白字符时拒绝启动。部署者使用安全随机值，不将其写进仓库。
+- 缺失或错误凭据返回 401，不返回状态内容；管理 API 不启用跨域访问。
+- 所有管理写入只接受 `application/json`，请求体最多 64 KiB；不支持的媒体类型返回 415，超限返回 413，JSON 或字段校验失败返回 400。
+- 日志不输出 Authorization、请求体和完整 query；只记录方法、路由模板、状态码及版本等诊断信息。
+- 状态、业务数据与页面响应使用 `Cache-Control: no-store`，避免客户端缓存干扰验证。
+- 故障注入不影响管理服务、`/health` 和本地静态资产，确保故障后仍可恢复和诊断。
+
+## 6. 实现与部署方案
+
+### 6.1 技术选择
+
+采用 Python 3.12 + FastAPI：用 schema 校验控制输入，用异步处理支持延迟场景，状态管理与页面渲染分别组织。一个进程持有状态并运行两个监听端口，不启用多个独立 worker，以免产生多份状态。
+
+服务端模板生成静态及 SSR HTML；React/Vue 使用本地固定版本资产，动态列表保持最小实现。管理后台使用本地 React 资产构建表单与场景控制界面，通过同源 API 读写状态，不引入独立前端服务。容器以非 root 用户运行，支持只读根文件系统，不需要数据库或外部存储。
+
+前端统一使用 **pnpm** 管理依赖和执行构建。`web/` 共用一个 `package.json` 和一个 `pnpm-lock.yaml`，覆盖管理后台及 React/Vue 目标页；不使用 `package-lock.json` 或 Yarn 锁文件。实现时在 `package.json` 的 `packageManager` 字段固定 pnpm 精确版本，锁文件由 pnpm 生成并提交。依赖安装和前端构建均在 Docker 内执行，部署构建使用冻结锁文件安装，确保使用已提交的依赖版本。目前尚未创建前端清单或构建脚本。
+
+### 6.2 网络边界
+
+| 端口 | 用途 | 默认暴露方式 |
+|---|---|---|
+| `9000` | 目标页面、业务数据及健康检查 | 容器内监听；本地预览时映射到宿主 `127.0.0.1:9000` |
+| `9001` | 管理后台及管理 API | 容器内监听；默认不发布宿主端口，仅控制网络可达 |
+
+容器内的 `127.0.0.1` 不是宿主机回环地址。本地开发启动方式必须通过开发 overlay 配置 `127.0.0.1:9001:9001`，提供可从浏览器打开的管理后台；基础 Compose 仍不发布管理端口。不能仅靠容器内绑定回环地址实现跨容器管理。
+
+端口分离不等于网络隔离。部署时需限制控制网络的参与者，并确保采集出口不能访问管理端口；token 仅用于管理后台和控制脚本，不提供给被采集页面或模型上下文。
+
+### 6.3 接入监控平台
+
+WebMonitor-Agent 的采集流量经过 egress，默认拒绝私网地址。现有 smoke overlay 为 `http://fixture:8000` 配置了精确例外；该配置不会自动允许 `http://mocksite:9000`。
+
+接入 mocksite 需要独立的开发/测试 overlay，配套处理目标 origin 校验、DNS 解析和出口 ACL，只允许 mocksite 的指定主机与页面端口。禁止放行整个私网、允许任意端口或让 worker 绕过 egress 直连。安全探针的重定向目的地和私网子资源仍须被拒绝。
+
+legacy WebMonitor 使用同一页面 URL 与 XPath，但需单独确认其容器网络和实际安全限制。不能把 Agent 的出口保障当作 legacy 已具备的能力。
+
+本仓库尚无可运行的 Compose 文件，因此当前不提供启动命令或镜像拉取示例。运行方式阶段交付时，必须同时提供实际可执行的构建、启动、后台访问与认证、管理请求和关闭步骤，并验证宿主访问与容器内访问两条路径。
+
+## 7. 交付顺序与验收
+
+按依赖顺序推进；**首轮交付包含 P1–P3，管理后台从 P1 开始建设，在首轮结束前完成 §5.1 的全部功能。** 每个阶段的验收应保留实际输出，不能只证明页面返回了 HTTP 200。
+
+| 阶段 | 交付内容 | 完成标准 |
+|---|---|---|
+| P1：管理后台与商品页面 | 状态校验、管理认证、版本、reset、static/SSR、商品变化与故障场景；后台认证、状态总览、商品编辑、场景控制与操作反馈 | 在后台完成“默认价格 → 修改 → 恢复”；非法写入不改变状态；500 期间仍可打开后台并恢复；API 返回状态与后台显示一致 |
+| P2：浏览器与列表 | React/Vue、本地资产、就绪标记、动态分页、列表场景；后台列表编辑、页大小与呈现控制、页面入口及选择器复制 | 浏览器离线加载并按选择器提取；通过后台修改列表后，目标页面同步变化；分页获得完整有序 ID；区分空列表、加载失败、字段缺失与重复行 |
+| P3：容器与平台联调 | Dockerfile、基础 Compose 与本地开发 overlay、控制脚本、平台测试 overlay、运行文档；后台完整流程验收 | 一条文档化命令启动并可访问后台；管理端口无公网发布；浏览器完成 §5.1 全部操作；两个平台分别完成基线、变化、故障、恢复验证 |
+| P4：扩展故障与安全验证 | 固定失败序列、单请求延迟、单页覆盖、安全探针 | 相同操作序列产生相同响应；单页覆盖不泄漏到其他页面；受限目的地址未被访问，有出口或探针证据 |
+
+各阶段都需满足以下通用标准：
+
+- **可复现**：从 reset 开始执行相同操作，得到相同业务内容与故障顺序；版本元数据除外。
+- **状态一致**：非法请求不产生部分更新；读响应对应完整快照；重启恢复默认状态。
+- **提取可验证**：商品页检查原始 HTML；CSR 页面检查浏览器渲染后的 DOM。不能要求 curl 返回已经渲染的 React/Vue 列表。
+- **后台可用**：通过真实浏览器验证认证、表单保存、场景切换和重置；覆盖错误 token、非法输入、请求失败与目标站 500，确认错误反馈准确、失败不误报成功、管理功能仍可用。
+- **结果归属清楚**：mocksite 证明输入是什么；平台联调证明提取、事件与通知实际发生了什么。告警次数及错误码以各平台契约为准。
+- **实现与文档一致**：只有已经通过验收的能力才标记为可用；不发布虚构镜像、无效环境变量或未经验证的接入示例。
+
+## 8. License
+
+本仓库采用 [CC BY-NC 4.0](LICENSE)（署名—非商业性使用）。第三方前端资产保留各自许可证与声明。

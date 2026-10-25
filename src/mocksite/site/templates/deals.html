@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Deals</title>
+    <script id="mocksite-config" type="application/json">
+      {
+        "itemPrice": {{ presentation.item_price | tojson }},
+        "pageSize": {{ page_size }}
+      }
+    </script>
+    <script>
+      window.MOCKSITE_LIST = JSON.parse(
+        document.getElementById('mocksite-config').textContent
+      );
+    </script>
+    <script src="/static/assets/list.js"></script>
+    <script src="/static/assets/deals.js"></script>
+  </head>
+  <body>
+    <main id="app"></main>
+  </body>
+</html>

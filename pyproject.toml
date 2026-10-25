@@ -31,7 +31,11 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mocksite"]
-include = ["src/mocksite/site/templates/*.html"]
+include = [
+  "src/mocksite/site/templates/*.html",
+  "src/mocksite/site/static/assets/*.js",
+  "src/mocksite/site/static/vendor/*",
+]
 
 [project.scripts]
 mocksite = "mocksite.cli:main"

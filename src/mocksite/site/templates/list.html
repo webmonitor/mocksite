@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ title }}</title>
+    {% for asset in vendor %}
+    <script src="/static/vendor/{{ asset }}"></script>
+    {% endfor %}
+    <script id="mocksite-config" type="application/json">
+      {
+        "itemPrice": {{ presentation.item_price | tojson }},
+        "pageSize": {{ page_size }}
+      }
+    </script>
+    <script>
+      window.MOCKSITE_LIST = JSON.parse(
+        document.getElementById('mocksite-config').textContent
+      );
+    </script>
+    <script src="/static/assets/list.js"></script>
+    <script src="/static/assets/{{ script }}"></script>
+  </head>
+  <body>
+    {#- data-ready / data-revision are set by the page script only after rows
+        exist; an empty shell here must never look ready. #}
+    <main id="app"></main>
+  </body>
+</html>

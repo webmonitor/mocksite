@@ -2,7 +2,7 @@
 
 本目录记录实施任务与进度；页面、状态、管理后台及 API 的目标契约以 [项目 README](../README.md) 为准。变更已经发生后记录到 [changelog](../changelog/README.md)，不能把计划写成已交付能力。
 
-当前状态：阶段 0（工具链骨架）、阶段 1（状态内核）、阶段 2（双端口 HTTP）与阶段 3（管理后台 SPA）已完成。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；列表页、部署镜像与平台联调仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
+当前状态：阶段 0（工具链骨架）、阶段 1（状态内核）、阶段 2（双端口 HTTP）、阶段 3（管理后台 SPA）与阶段 4（列表与 CSR）已完成。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；部署镜像与平台联调仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
 
 ## 实施阶段
 
@@ -13,7 +13,7 @@ graph LR
   S0[0 工具链骨架] --> S1[1 状态内核 ✅]
   S1 --> S2[2 双端口 HTTP]
   S2 --> S3[3 管理后台 SPA ✅]
-  S2 --> S4[4 列表与 CSR]
+  S2 --> S4[4 列表与 CSR ✅]
   S3 --> S5[5 容器与平台联调]
   S4 --> S5
   S5 --> S6[6 P4 扩展]
@@ -25,7 +25,7 @@ graph LR
 | 1 状态内核 ✅ | `src/mocksite/state/{models,patch,store,errors}.py`、`scenarios/registry.py` | 纯逻辑无 HTTP；校验、提交、版本递增、静态页重渲在同一次锁内完成 | `tests/unit` 通过；非法输入不改变状态也不推进版本 |
 | 2 双端口 HTTP ✅ | `src/mocksite/cli.py`、`config.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
 | 3 管理后台 SPA ✅ | `web/admin/src/**`（`lib/api.ts`、`components/ui.tsx`、`features/{connection,state,scenarios,targets}`） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
-| 4 列表与 CSR | `web/targets/{shared,react,vue}`、`site/static/vendor/`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
+| 4 列表与 CSR ✅ | `site/static/{vendor,assets}/`、`site/templates/{list,deals}.html`、`/react/list`、`/vue/list`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
 | 5 容器与平台联调 | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`scripts/control.py`、`integrations/{agent,legacy}` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
 | 6 P4 扩展 | `/flaky`、`/slow`、单页覆盖、安全探针 | 确定性序列与计数，reset 清零；探针只接受固定枚举 | 相同序列产生相同响应；受限地址未被访问（出口或探针计数证据） |
 
@@ -84,11 +84,19 @@ graph LR
 
 ### 阶段 4：列表与 CSR
 
-- [ ] 落地本地 React/Vue UMD 资产与许可证/完整性清单（可复用 Agent `tests/fixtures/static/vendor/` 的版本与校验值，资产随站点分发）。
-- [ ] React/Vue 列表页：加载成功后才设 `data-ready="true"` 并写入 `data-revision`，失败显示错误且不设就绪标记。
+- [x] 落地本地 React/Vue UMD 资产与许可证/完整性清单（可复用 Agent `tests/fixtures/static/vendor/` 的版本与校验值，资产随站点分发）。
+  `src/mocksite/site/static/vendor/`：react 18.3.1、react-dom 18.3.1、vue 3.5.43 的 UMD 包与各自 MIT 许可证；`manifest.json` 记录来源 URL、`sha512` 与字节数，`tests/unit/test_site_render_lists.py` 逐文件校验哈希、大小与许可证存在性。资产经 `/static/vendor/*` 由站点进程直接分发，无 CDN。
+- [x] React/Vue 列表页：加载成功后才设 `data-ready="true"` 并写入 `data-revision`，失败显示错误且不设就绪标记。
   `site/static/assets/{list,react-list,vue-list}.js` + `site/templates/list.html`：`#app` 由服务端渲染为空壳（不含任何行），页面脚本 fetch `/api/data` 后才挂载；React 在 `createRoot().render()` 后、Vue 在 `nextTick` 后调用 `markReady()`。失败时写入 `#status[data-state=error]` 且不设 `data-ready`。
-- [ ] `/dynamic/deals`：首屏一页、点击追加、加载中禁用、末页隐藏按钮；空列表也进入就绪状态。
-- [ ] 列表相关场景：`item_price_change`、`empty_list`、`field_rename`、`duplicate_rows`、`pagination_grow`。
+- [x] `/dynamic/deals`：首屏一页、点击追加、加载中禁用、末页隐藏按钮；空列表也进入就绪状态。
+  `site/static/assets/deals.js`：首屏渲染第 1 页并 `markReady`；每次点击追加恰好一页（先置 `disabled` 再在下一个宏任务插入行），末页后 `hidden=true`；空列表仍进入就绪态且按钮隐藏。
+- [x] 列表相关场景：`item_price_change`、`empty_list`、`field_rename`、`duplicate_rows`、`pagination_grow`。
+  浏览器实测：A 行 `10.00 → 12.50` 在 React/Vue/动态页同时生效；空列表 `ready=true` 且 0 行；`field_rename` 后 `td.price` 为 0、`td.cost` 为 3（行仍在）；`duplicate_rows` 得到 `A,B,C,A`；`pagination_grow` 从两页增至三页且顺序为 `A..E`。
+
+**验收脚本**：`scripts/check_target_pages.py`（真实 Chromium，32 项检查；拦截所有非站点请求以证明离线可用）。
+
+**实现说明**：`/static/assets` 与 `/static/vendor` 作为挂载点，`/static/product` 仍是独立路由（早期把整个 `/static` 挂载导致该页 404）；故障中间件只豁免这两个资源前缀，`/static/product` 在 `outage` 下仍返回 500（`test_assets_are_not_business_pages`）。
+
 ### 阶段 5：容器与平台联调
 
 - [ ] 生产镜像（非 root、只读根文件系统、无数据库与外部存储）与基础 `compose.yaml`；仅发布 9000，9001 走控制网络。
@@ -118,12 +126,12 @@ graph LR
 
 依赖 P1 的状态与管理 API。
 
-- [ ] 实现 React/Vue 列表、本地前端资产、就绪标记及数据版本展示。
-- [ ] 实现动态分页、稳定行 ID、加载期间禁用与末页结束行为。
-- [ ] 实现列表价格变化、空列表、字段改名、重复行及分页增长场景。
+- [x] 实现 React/Vue 列表、本地前端资产、就绪标记及数据版本展示。见阶段 4。
+- [x] 实现动态分页、稳定行 ID、加载期间禁用与末页结束行为。见阶段 4。
+- [x] 实现列表价格变化、空列表、字段改名、重复行及分页增长场景。见阶段 4。
 - [x] 完成后台列表增删改、页大小编辑、呈现控制及目标页面入口。（阶段 3 已交付；列表页本身属阶段 4）
 - [x] 提供 CSS/XPath 复制，区分宿主预览地址与平台采集地址。见阶段 3 的 `/_admin/meta` 与 `TargetPanel`。
-- [ ] 验证离线渲染、完整有序分页及后台修改后的实际页面内容。
+- [x] 验证离线渲染、完整有序分页及后台修改后的实际页面内容。见 `scripts/check_target_pages.py`（32 项，含“无外部请求”断言）。
 
 ## P3：容器与平台联调
 

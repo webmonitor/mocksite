@@ -1,0 +1,36 @@
+{
+  "distribution": "Vendored official npm UMD bundles, served from this directory; no CDN at runtime.",
+  "note": "React 18.3.1 is the last React release shipping standalone UMD browser bundles; the admin SPA uses React 19 via Vite instead.",
+  "assets": [
+    {
+      "package": "react",
+      "version": "18.3.1",
+      "file": "react-18.3.1.min.js",
+      "license_file": "react-LICENSE",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/react/-/react-18.3.1.tgz",
+      "sha512": "sha512-QVs8Lo43F9lSuBykadDb0oSXDL/BbZ588urWVCRwSIoewQv/Ewg1f84mK3U790bZ0FfhFa1YSQUmIhG+pIRKeg==",
+      "bytes": 10751
+    },
+    {
+      "package": "react-dom",
+      "version": "18.3.1",
+      "file": "react-dom-18.3.1.min.js",
+      "license_file": "react-dom-LICENSE",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/react-dom/-/react-dom-18.3.1.tgz",
+      "sha512": "sha512-6a1107rTlA4gYpgHAqbwLAtxmWipBdJFcq8y5S/aTge3Bp+VAklABm2LO+Kg51vOWR9JMZq1Ovjl5tpluNpTeQ==",
+      "bytes": 131835
+    },
+    {
+      "package": "vue",
+      "version": "3.5.43",
+      "file": "vue-3.5.43.min.js",
+      "license_file": "vue-LICENSE",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/vue/-/vue-3.5.43.tgz",
+      "sha512": "sha512-sWo4JSOrOjQSAFqExKhjRSQeHPN5DwPoPVW3xpJzQd6IzMDHC2s/2H+o0JIOBYI1Z2eDgo8zwgZu50Qb7L0ClQ==",
+      "bytes": 168331
+    }
+  ]
+}

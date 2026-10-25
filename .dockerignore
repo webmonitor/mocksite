@@ -1,0 +1,15 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+web/dist
+**/dist
+__pycache__
+**/__pycache__
+*.egg-info
+.pytest_cache
+.ruff_cache
+.venv
+.pnpm-store
+.env
+.DS_Store

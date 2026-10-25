@@ -2,7 +2,89 @@
 
 本目录记录实施任务与进度；页面、状态、管理后台及 API 的目标契约以 [项目 README](../README.md) 为准。变更已经发生后记录到 [changelog](../changelog/README.md)，不能把计划写成已交付能力。
 
-当前状态：规划已整理，应用尚未实现。首轮交付包含 P1–P3，管理后台是必交付内容。以下任务均未完成。
+当前状态：阶段 0（工具链骨架）已完成，其余未实现。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile` 与 `compose.yaml` 的 `dev` 服务已落地；状态内核、HTTP 服务、管理 API、目标页面与部署镜像仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
+
+## 实施阶段
+
+按依赖顺序推进。阶段 0–6 是可执行的落地顺序，P1–P4 是验收分组：P1 = 阶段 0–3，P2 = 阶段 4，P3 = 阶段 5，P4 = 阶段 6。
+
+```mermaid
+graph LR
+  S0[0 工具链骨架] --> S1[1 状态内核]
+  S1 --> S2[2 双端口 HTTP]
+  S2 --> S3[3 管理后台 SPA]
+  S2 --> S4[4 列表与 CSR]
+  S3 --> S5[5 容器与平台联调]
+  S4 --> S5
+  S5 --> S6[6 P4 扩展]
+```
+
+| 阶段 | 产出 | 关键约束 | 完成标准 |
+|---|---|---|---|
+| 0 工具链骨架 | `pyproject.toml`、`requirements*.txt`、`.gitignore`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml`（dev 服务） | Python `>=3.12,<3.13` 装进镜像，不在宿主建 venv；Python 依赖无锁文件，由 `uv pip compile --generate-hashes` 从 `pyproject.toml` 生成；pnpm 版本写入 `packageManager` 并由 pnpm 生成锁文件 | 容器内 `python -c "import mocksite"` 与 `pnpm install --frozen-lockfile` 均成功 |
+| 1 状态内核 | `src/mocksite/state/models.py`、`state/store.py`、`scenarios/registry.py` | 纯逻辑无 HTTP；校验、提交、版本递增、静态页重渲在同一次锁内完成 | `tests/unit` 通过；非法输入不改变状态也不推进版本 |
+| 2 双端口 HTTP | `src/mocksite/app.py`、`cli.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
+| 3 管理后台 SPA | `web/admin/src/**`（复用已有 `features/{connection,state,scenarios,targets}` 目录） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
+| 4 列表与 CSR | `web/targets/{shared,react,vue}`、`site/static/vendor/`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
+| 5 容器与平台联调 | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`scripts/control.py`、`integrations/{agent,legacy}` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
+| 6 P4 扩展 | `/flaky`、`/slow`、单页覆盖、安全探针 | 确定性序列与计数，reset 清零；探针只接受固定枚举 | 相同序列产生相同响应；受限地址未被访问（出口或探针计数证据） |
+
+### 阶段 0：工具链骨架
+
+- [x] 创建 `pyproject.toml`（hatchling，包 `mocksite`，源码根 `src`）与 `.gitignore`（`__pycache__`、`.venv`、`node_modules`、构建产物、本地 `.env`）。
+- [x] 在 `web/package.json` 写入 `packageManager` 固定 pnpm 精确版本，生成并提交 `pnpm-lock.yaml`；管理后台与 React/Vue 目标页共用这一份清单。
+- [x] 提供 dev 工具链 Dockerfile（Python 3.12 + Node 22 + pnpm），依赖安装与前端构建都在容器内执行，部署构建使用冻结锁文件。
+
+### 阶段 1：状态内核
+
+- [ ] 定义状态模型：业务数据（商品、列表、`page_size`）、互斥呈现枚举、故障项、只读 `revision`。
+- [ ] 实现 `PATCH` 语义：对象递归合并、数组整体替换、`null` 与未知键报错。
+- [ ] 实现锁内的“校验 → 静态页渲染 → 提交 → 版本递增”，保证不存在状态已更新而静态页仍旧的窗口。
+- [ ] 实现场景注册表：每个场景从默认状态构造完整目标状态后一次性提交，场景之间不叠加。
+- [ ] 单元测试覆盖价格校验（`Decimal`、非负、有限、≤64 字符）、列表边界（0–100 行、页大小 1–100）、非法请求不推进版本。
+
+### 阶段 2：双端口 HTTP
+
+- [ ] `cli.py` 内并发运行两个 `uvicorn.Server`，共享同一 `StateStore`；不启用多进程。
+- [ ] 管理端口实现 Bearer 认证（`MOCKSITE_TOKEN` 未配置或不足 32 个非空白字符时拒绝启动）、`GET/PATCH /_admin/state`、`POST /_admin/reset`、`GET /_admin/scenarios`、`POST /_admin/scenario/{name}`。
+- [ ] 站点端口实现 `/static/product`（预渲染）、`/ssr/product`、`/api/data`、`/health`，全部带 `X-Mocksite-Revision` 与 `no-store`。
+- [ ] 故障注入只作用于站点业务路由，不影响管理服务、`/health` 与本地资产。
+- [ ] 请求体上限 64 KiB、只接受 `application/json`、日志不输出 Authorization 与请求体。
+
+### 阶段 3：管理后台 SPA
+
+- [ ] 连接与认证：token 输入、连接状态、退出；刷新即清除，不写 localStorage/URL。
+- [ ] 状态总览与手动刷新；商品字段表单；列表行增删改与页大小编辑；呈现控制项。
+- [ ] 场景列表（含影响范围）、应用预设、恢复默认；应用前提示覆盖当前状态，成功后展示前后版本。
+- [ ] 目标页面入口：区分宿主预览地址与平台采集地址，提供 CSS/XPath 复制。
+- [ ] 操作反馈：提交中禁用、字段错误、401 失效、网络失败；失败不伪报成功。
+
+### 阶段 4：列表与 CSR
+
+- [ ] 落地本地 React/Vue UMD 资产与许可证/完整性清单（可复用 Agent `tests/fixtures/static/vendor/` 的版本与校验值，资产随站点分发）。
+- [ ] React/Vue 列表页：加载成功后才设 `data-ready="true"` 并写入 `data-revision`，失败显示错误且不设就绪标记。
+- [ ] `/dynamic/deals`：首屏一页、点击追加、加载中禁用、末页隐藏按钮；空列表也进入就绪状态。
+- [ ] 列表相关场景：`item_price_change`、`empty_list`、`field_rename`、`duplicate_rows`、`pagination_grow`。
+
+### 阶段 5：容器与平台联调
+
+- [ ] 生产镜像（非 root、只读根文件系统、无数据库与外部存储）与基础 `compose.yaml`；仅发布 9000，9001 走控制网络。
+- [ ] `compose.dev.yaml` 映射 `127.0.0.1:9001:9001` 供浏览器打开后台；控制脚本封装 `/_admin/*` 调用。
+- [ ] 为 Agent 增加精确 origin 例外（见下文阻塞 1），保持管理端口对采集出口不可达；legacy 单独确认网络与安全限制。
+- [ ] 运行文档：构建、启动、后台访问与认证、管理请求、关闭，并验证宿主与容器内两条访问路径。
+- [ ] 完成 README §5.1 全部后台功能的浏览器验收并保留证据。
+
+### 阶段 6：P4 扩展
+
+- [ ] `/flaky` 固定序列与按端点计数，reset 清零。
+- [ ] `/slow?ms=` 仅影响当前请求，边界 0–30000，非法输入 400。
+- [ ] 单页数据覆盖，显式出现在状态中，reset 清除。
+- [ ] `/redirect-private?target=` 与 `/private-resource`，只接受固定枚举。
+
+## 已知前置阻塞
+
+1. **Agent 出口例外硬编码。** `WebMonitor-Agent/src/webmonitor/security/egress.py:29` 只放行 `http://fixture:8000`，`config.py:95` 的校验器把该值钉死，`deploy/egress/squid.smoke.conf` 与 `unbound.smoke.conf` 也只允许 `fixture` 域名与 8000 端口。复制 smoke overlay 无法放行 `http://mocksite:9000`。阶段 5 之前必须把例外参数化，并在 Squid ACL 与 DNS 转发中同步加精确条目，同时禁止到达 9001。
+2. **选择器契约要求表格结构。** README §3.3 的 `#inventory tbody tr.item` 隐含 `<table>`，而 Agent 现有 `tests/fixtures/site.py` 使用 `<ul>`。新站点必须渲染 `<table>`，否则文档中的 XPath 在真实 DOM 上不成立，legacy 的 Selenium 等待会直接超时。
 
 ## P1：管理后台与商品页面
 

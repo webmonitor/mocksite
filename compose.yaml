@@ -1,0 +1,15 @@
+name: mocksite
+
+# Development toolchain only. Site/admin services and their ports arrive in
+# stage 5; this file intentionally publishes nothing.
+services:
+  dev:
+    image: mocksite-dev:local
+    build: {context: ., dockerfile: deploy/dev.Dockerfile}
+    init: true
+    working_dir: /workspace
+    environment:
+      HOME: /tmp
+    volumes:
+      - ./:/workspace
+    command: ["python"]

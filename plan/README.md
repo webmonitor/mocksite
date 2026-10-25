@@ -112,6 +112,11 @@ graph LR
 - [ ] 单页数据覆盖，显式出现在状态中，reset 清除。
 - [ ] `/redirect-private?target=` 与 `/private-resource`，只接受固定枚举。
 
+## 已知前置阻塞
+
+1. **Agent 出口例外硬编码（仍未解决，阻塞阶段 5）。** `WebMonitor-Agent/src/webmonitor/security/egress.py:29` 只放行 `http://fixture:8000`，`config.py:95` 的校验器把该值钉死，`deploy/egress/squid.smoke.conf` 与 `unbound.smoke.conf` 也只允许 `fixture` 域名与 8000 端口。复制 smoke overlay 无法放行 `http://mocksite:9000`。阶段 5 之前必须把例外参数化，并在 Squid ACL 与 DNS 转发中同步加精确条目，同时禁止到达 9001。`integrations/agent/` 存放 mocksite 侧的接入配置，待 Agent 侧参数化后对接。
+2. ~~**选择器契约要求表格结构。**~~ 已在阶段 4 解决：`/react/list`、`/vue/list`、`/dynamic/deals` 均渲染真实 `<table>`，`#inventory tbody tr.item` 与 `td.price` 在真实 DOM 上成立。Agent 现有 `tests/fixtures/site.py` 仍使用 `<ul>`，但那是它自己的 smoke fixture，不在本轮替换范围内。
+
 ## P1：管理后台与商品页面
 
 - [x] 在 Docker 开发环境中初始化 `web/package.json`，固定 pnpm 版本并生成 `pnpm-lock.yaml`；提供后台构建入口，部署构建采用冻结锁文件安装。

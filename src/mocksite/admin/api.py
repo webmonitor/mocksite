@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from mocksite.admin.auth import BearerAuth
+from mocksite.site.pages import pages_document
 from mocksite.state.errors import StateValidationError, UnknownScenario
 from mocksite.state.models import State
 from mocksite.state.store import StateStore
@@ -98,7 +99,14 @@ class _BodyError(Exception):
         super().__init__(code)
 
 
-def create_admin_app(store: StateStore, token: str, admin_dist: Path) -> FastAPI:
+def create_admin_app(
+    store: StateStore,
+    token: str,
+    admin_dist: Path,
+    *,
+    site_origin: str = "http://mocksite:9000",
+    site_public_origin: str = "http://127.0.0.1:9000",
+) -> FastAPI:
     app = FastAPI(
         title="mocksite admin",
         docs_url=None,
@@ -149,6 +157,18 @@ def create_admin_app(store: StateStore, token: str, admin_dist: Path) -> FastAPI
         before, after = store.reset()
         return JSONResponse(
             {"before": state_document(before), "after": state_document(after)},
+            headers=NO_STORE,
+        )
+
+    @app.get(f"{ADMIN_PREFIX}/meta")
+    async def meta() -> JSONResponse:
+        """Everything the UI needs that is not state: pages, selectors, URLs."""
+        return JSONResponse(
+            {
+                "site_origin": site_origin,
+                "site_public_origin": site_public_origin,
+                "pages": pages_document(site_origin, site_public_origin),
+            },
             headers=NO_STORE,
         )
 

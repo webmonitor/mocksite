@@ -52,10 +52,23 @@ class Settings:
     admin_port: int
     admin_dist: Path
     log_level: str
+    #: Origin a monitoring platform should collect from (container DNS name in
+    #: compose). Never assume it equals the origin a human can open.
+    collect_origin: str | None = None
+    #: Origin a developer's browser can open.
+    public_origin: str | None = None
 
     @property
     def site_origin(self) -> str:
         return f"http://{self.site_host}:{self.site_port}"
+
+    @property
+    def resolved_collect_origin(self) -> str:
+        return self.collect_origin or f"http://mocksite:{self.site_port}"
+
+    @property
+    def resolved_public_origin(self) -> str:
+        return self.public_origin or f"http://127.0.0.1:{self.site_port}"
 
     @property
     def admin_origin(self) -> str:
@@ -89,4 +102,6 @@ class Settings:
             admin_port=admin_port,
             admin_dist=Path(source.get("MOCKSITE_ADMIN_DIST") or DEFAULT_ADMIN_DIST),
             log_level=level,
+            collect_origin=source.get("MOCKSITE_COLLECT_ORIGIN") or None,
+            public_origin=source.get("MOCKSITE_PUBLIC_ORIGIN") or None,
         )

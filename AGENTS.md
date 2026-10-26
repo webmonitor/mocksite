@@ -82,7 +82,7 @@ Both scripts read the token from `$MOCKSITE_TOKEN` and default to ports 9000/900
 Lint/format and dependency generation are **not** in the dev image (`requirements.txt` has no `ruff`/`uv`); run them from the shared conda env:
 
 ```sh
-conda activate webmonitor            # ../.github/environment.yml
+conda activate webmonitor            # ../.github/env/environment.yml
 ruff check src tests && ruff format --check src tests
 # regenerate hash-pinned requirements — do not hand-edit requirements.txt
 uv pip compile pyproject.toml --group dev --generate-hashes \
@@ -94,7 +94,7 @@ Docker stays authoritative for runtime/tests; the conda env exists for editing, 
 ## Code Conventions & Common Patterns
 
 - **Python:** 3.12 only (`>=3.12,<3.13`), ruff `line-length = 100`, `target-version = "py312"`. Type hints on all new code. Async FastAPI; `asyncio_mode = "strict"` so mark async tests explicitly.
-- **Exact pins, no lock file:** every dependency in `pyproject.toml` is `==`; shared package versions must match `../.github/requirements-workspace.txt`. `requirements.txt` is generated, hash-pinned, installed with `--require-hashes`.
+- **Exact pins, no lock file:** every dependency in `pyproject.toml` is `==`; shared package versions must match `../.github/env/requirements-workspace.txt`. `requirements.txt` is generated, hash-pinned, installed with `--require-hashes`.
 - **Frontend:** TypeScript 7 `strict` plus `noUncheckedIndexedAccess`, `noUnusedLocals/Parameters`, `verbatimModuleSyntax`. React 19 function components, hand-written CSS, no component library. Path alias `@/*` → `web/admin/src/*` is declared in **both** `web/tsconfig.json` (`paths`, relative form — TS7 removed `baseUrl`) and `web/vite.config.ts` (`resolve.alias`); keep them in sync.
 - **Admin UI rules:** the server is the only source of truth — a mutation replaces the cached document with the response body, and a failed mutation keeps the previous one. Prices are edited and submitted as strings, never numbers. Drafts survive a failed submit and are only cleared by a confirmed response. The token lives in `lib/api.ts` module memory only (never `localStorage`, URL, or logs); 401 clears it and returns to the connect screen. Never fetch `/_admin/*` before a token exists.
 - **Layering (follow the plan's module names):** pure logic in `state/` and `scenarios/` (no HTTP imports — enforced today, keep it), thin routes in `site/`/`admin/`, assembly in `app.py`, process entry in `cli.py`. Tests must be able to import state/scenario logic without starting a server.

@@ -276,7 +276,7 @@ PATCH 中对象字段递归合并，数组整体替换；`null` 不表示删除�
 
 `web/targets/` 不经过 Vite：`shared/`、`react/`、`vue/` 三个子树由站点进程分别挂载在 `/static/shared`、`/static/react`、`/static/vue`。构建 wheel 时通过 hatchling 的 `force-include` 把三个子树复制进包的 `mocksite/_static/`，因此生产镜像不依赖仓库里的 `web/` 目录。运行时解析顺序为：`MOCKSITE_TARGET_ASSETS` 显式配置 → 包内 `_static` → 仓库 `web/targets`（仅便于可编辑安装）。`package.json` 的 `packageManager` 字段已固定 pnpm `12.15.0`，锁文件由 pnpm 生成并提交。依赖安装和前端构建均在 Docker 内执行，部署构建使用冻结锁文件安装，确保使用已提交的依赖版本。构建入口为 `web/admin`（管理后台）；目标页使用随站点分发的 UMD 资产，不参与该构建。
 
-Python 依赖同样在 Docker 内安装。宿主侧可选使用工作区共用的 conda 环境（`../.github/environment.yml`，环境名 `webmonitor`，Python 3.12），用于编辑、lint 与快速跑测试；`pyproject.toml` 的 pin 需与 `../.github/requirements-workspace.txt` 保持一致，容器构建仍以 `pyproject.toml` 为准。
+Python 依赖同样在 Docker 内安装。宿主侧可选使用工作区共用的 conda 环境（`../.github/env/environment.yml`，环境名 `webmonitor`，Python 3.12），用于编辑、lint 与快速跑测试；`pyproject.toml` 的 pin 需与 `../.github/env/requirements-workspace.txt` 保持一致，容器构建仍以 `pyproject.toml` 为准。
 
 ### 6.2 网络边界
 

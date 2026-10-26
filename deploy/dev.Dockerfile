@@ -26,6 +26,11 @@ RUN groupadd --gid 10001 mocksite \
 WORKDIR /workspace
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
+# pyproject's wheel force-include pulls assets from web/targets, and hatchling
+# resolves those paths even for an editable install (metadata generation). They
+# only have to exist at build time; at runtime ./ is mounted over /workspace and
+# the repo's own copy wins.
+COPY web/targets ./web/targets
 RUN pip install --no-cache-dir --no-deps -e . \
     && rm -rf /workspace/requirements.txt
 

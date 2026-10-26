@@ -45,25 +45,25 @@ RECOMMENDATIONS = (
     {
         "name": "Kenya Nyeri AA 1kg",
         "price": "142.00",
-        "src": "/static/assets/img/coffee-red.svg",
+        "src": "/static/shared/img/coffee-red.svg",
         "alt": "Kenya Nyeri coffee bag",
     },
     {
         "name": "Colombia Huila 1kg",
         "price": "118.00",
-        "src": "/static/assets/img/coffee-black.svg",
+        "src": "/static/shared/img/coffee-black.svg",
         "alt": "Colombia Huila coffee bag",
     },
     {
         "name": "Brazil Cerrado 1kg",
         "price": "96.00",
-        "src": "/static/assets/img/coffee-natural-back.svg",
+        "src": "/static/shared/img/coffee-natural-back.svg",
         "alt": "Brazil Cerrado coffee bag",
     },
     {
         "name": "Decaf Guji 1kg",
         "price": "134.00",
-        "src": "/static/assets/img/coffee-natural.svg",
+        "src": "/static/shared/img/coffee-natural.svg",
         "alt": "Decaf Guji coffee bag",
     },
 )
@@ -128,7 +128,8 @@ def render_product(state: State) -> str:
     return _environment().get_template("product.html").render(**_context(state))
 
 
-#: Vendored UMD bundles per framework. Order matters: react-dom needs react.
+#: Vendored UMD bundles per framework, served from that framework's own
+#: subtree. Order matters: react-dom needs react.
 VENDOR_REACT: tuple[str, ...] = ("react-18.3.1.min.js", "react-dom-18.3.1.min.js")
 VENDOR_VUE: tuple[str, ...] = ("vue-3.5.43.min.js",)
 
@@ -152,6 +153,7 @@ def render_list(state: State, framework: str) -> str:
         .get_template("list.html")
         .render(
             title=title,
+            framework=framework,
             vendor=vendor,
             script=script,
             page_size=state.business.page_size,

@@ -23,9 +23,9 @@ def test_list_shell_loads_shared_then_page_script(
     html = render_list(DEFAULT_STATE, framework)
     # Order matters: the shared helper defines window.MocksiteList, and the
     # page script fails immediately without it.
-    assert html.index("/static/assets/list.js") < html.index(f"/static/assets/{script}")
+    assert html.index("/static/shared/list.js") < html.index(f"/static/{framework}/{script}")
     for asset in vendor:
-        assert f"/static/vendor/{asset}" in html
+        assert f"/static/{framework}/{asset}" in html
 
 
 def test_list_shell_has_no_rows() -> None:
@@ -67,7 +67,7 @@ def test_unknown_framework_rejected() -> None:
 
 def test_deals_shell_loads_shared_then_page_script() -> None:
     html = render_deals(DEFAULT_STATE)
-    assert html.index("/static/assets/list.js") < html.index("/static/assets/deals.js")
+    assert html.index("/static/shared/list.js") < html.index("/static/shared/deals.js")
 
 
 def test_no_external_asset_references() -> None:
@@ -86,14 +86,15 @@ def test_vendor_manifest_matches_shipped_files() -> None:
     import base64
     import hashlib
 
-    manifest = json.loads((ASSETS / "vendor" / "manifest.json").read_text())
+    manifest = json.loads((ASSETS / "manifest.json").read_text())
     assert manifest["assets"], "manifest must list the vendored bundles"
     for asset in manifest["assets"]:
-        data = (ASSETS / "vendor" / asset["file"]).read_bytes()
+        framework = "react" if asset["package"].startswith("react") else "vue"
+        data = (ASSETS / framework / asset["file"]).read_bytes()
         digest = "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode()
         assert digest == asset["sha512"], asset["file"]
         assert len(data) == asset["bytes"], asset["file"]
-        assert (ASSETS / "vendor" / asset["license_file"]).is_file(), asset["license_file"]
+        assert (ASSETS / framework / asset["license_file"]).is_file(), asset["license_file"]
 
 
 def test_every_referenced_asset_exists() -> None:
@@ -129,15 +130,15 @@ def test_asset_resolution_prefers_the_packaged_copy() -> None:
 
 
 def test_pyproject_force_includes_every_asset_tree() -> None:
-    """web/targets is the source of truth; the wheel must pull both subtrees."""
+    """web/targets is the source of truth; the wheel must pull all three subtrees."""
     import tomllib
 
     root = Path(__file__).parents[2]
     config = tomllib.loads((root / "pyproject.toml").read_text())
     forced = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
 
-    assert "web/targets/assets" in forced
-    assert "web/targets/vendor" in forced
+    for subtree in ("shared", "react", "vue"):
+        assert f"web/targets/{subtree}" in forced
     # Everything lands under the package root so `PACKAGED_ASSETS` finds it.
     assert all(target.startswith("mocksite/") for target in forced.values())
     for source in forced:

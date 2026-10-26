@@ -24,19 +24,22 @@ from mocksite.state.models import State
 from mocksite.state.store import StateStore
 
 #: Where the wheel puts the vendored target-page assets (see pyproject
-#: ``[tool.hatch.build.targets.wheel.force-include]``, which maps them to
-#: ``mocksite/_static`` — the package root, not ``mocksite/site/``).
+#: ``[tool.hatch.build.targets.wheel.force-include]``, which maps the three
+#: subtrees to ``mocksite/_static/{shared,react,vue}`` — the package root, not
+#: ``mocksite/site/``).
 #: The repo keeps the files under ``web/targets`` because they are frontend
-#: code, not Python.
+#: code, not Python. ``shared/`` holds framework-agnostic page assets,
+#: ``react/`` and ``vue/`` each hold one page script plus that framework's
+#: vendored UMD bundles and licenses.
 PACKAGED_ASSETS = Path(__file__).parent.parent / "_static"
 #: Repo checkout location, used when running from an editable install.
 REPO_ASSETS = Path(__file__).resolve().parents[3] / "web" / "targets"
 
-ASSET_PREFIXES = ("/static/assets/", "/static/vendor/")
+ASSET_PREFIXES = ("/static/shared/", "/static/react/", "/static/vue/")
 
 
 def resolve_asset_dir(explicit: Path | None = None) -> Path:
-    """Locate ``assets/`` and ``vendor/``.
+    """Locate ``shared/``, ``react/`` and ``vue/``.
 
     Order: explicit config, then the packaged copy inside the wheel, then the
     repo checkout. The order matters — an installed package must never depend
@@ -44,7 +47,7 @@ def resolve_asset_dir(explicit: Path | None = None) -> Path:
     """
     candidates = [explicit, PACKAGED_ASSETS, REPO_ASSETS]
     for candidate in candidates:
-        if candidate is not None and (candidate / "assets").is_dir():
+        if candidate is not None and (candidate / "shared").is_dir():
             return candidate
     searched = ", ".join(str(candidate) for candidate in candidates if candidate is not None)
     raise RuntimeError(f"target page assets not found; searched: {searched}")
@@ -92,14 +95,15 @@ def create_site_app(store: StateStore, assets_dir: Path | None = None) -> FastAP
     def _headers(state: State) -> dict[str, str]:
         return {REVISION_HEADER: str(state.revision), **NO_STORE}
 
-    # Vendored runtimes and page scripts live under /static/assets and
-    # /static/vendor; /static/product stays a real route. Mounted rather than
-    # proxied so the target pages work with no network egress at all.
-    # The files themselves live in web/targets (frontend code) and are
-    # force-included into the wheel at build time.
+    # Vendored runtimes and page scripts live under /static/{shared,react,vue};
+    # /static/product stays a real route. Mounted rather than proxied so the
+    # target pages work with no network egress at all. The files themselves
+    # live in web/targets (frontend code) and are force-included into the
+    # wheel at build time.
     static_dir = resolve_asset_dir(assets_dir)
-    app.mount("/static/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
-    app.mount("/static/vendor", StaticFiles(directory=static_dir / "vendor"), name="vendor")
+    app.mount("/static/shared", StaticFiles(directory=static_dir / "shared"), name="shared")
+    app.mount("/static/react", StaticFiles(directory=static_dir / "react"), name="react")
+    app.mount("/static/vue", StaticFiles(directory=static_dir / "vue"), name="vue")
 
     @app.get("/health")
     async def health() -> JSONResponse:

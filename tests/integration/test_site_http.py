@@ -182,7 +182,7 @@ async def test_list_pages_are_served_without_rows(stack: Stack, path: str) -> No
     assert "Alpha" not in response.text
 
 
-@pytest.mark.parametrize("path", ["/static/assets/list.js", "/static/vendor/vue-3.5.43.min.js"])
+@pytest.mark.parametrize("path", ["/static/shared/list.js", "/static/vue/vue-3.5.43.min.js"])
 async def test_assets_are_served_and_survive_outage(stack: Stack, path: str) -> None:
     await _set(stack, {"faults": {"kind": "outage"}})
     response = await stack.site.get(path)
@@ -193,7 +193,7 @@ async def test_assets_are_not_business_pages(stack: Stack) -> None:
     """/static/product is a page and must fail during an outage; assets must not."""
     await _set(stack, {"faults": {"kind": "outage"}})
     assert (await stack.site.get("/static/product")).status_code == 500
-    assert (await stack.site.get("/static/assets/deals.js")).status_code == 200
+    assert (await stack.site.get("/static/shared/deals.js")).status_code == 200
 
 
 async def test_list_pages_expose_revision_for_csrf_free_checks(stack: Stack) -> None:

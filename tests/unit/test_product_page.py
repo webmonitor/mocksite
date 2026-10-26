@@ -153,7 +153,9 @@ def test_every_asset_referenced_by_the_page_is_packaged() -> None:
 
     html = _render()
     assets = {
-        match.group(1) for match in re.finditer(r'(?:src|href)="(/static/assets/[^"]+)"', html)
+        match.group(1)
+        for match in re.finditer(r'(?:src|href)="(/static/[^"]+)"', html)
+        if not match.group(1).startswith("/static/product")
     }
     assert assets, "the page should reference local assets"
 

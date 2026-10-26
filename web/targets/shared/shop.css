@@ -1,7 +1,7 @@
 /*
  * Product-detail page styling.
  *
- * Served from /static/assets/shop.css. Deliberately self-contained: no web
+ * Served from /static/shared/shop.css. Deliberately self-contained: no web
  * fonts, no CDN, no external images — the page must render identically with
  * the network switched off.
  */

@@ -348,7 +348,7 @@ def run(args, token: str) -> Results:
         )
 
         # assets stay reachable during an outage so the failure is diagnosable
-        asset = page.request.get(f"{site}/static/assets/list.js")
+        asset = page.request.get(f"{site}/static/shared/list.js")
         results.check("assets survive outage", asset.status == 200)
 
         reset_server(admin, token)

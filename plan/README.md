@@ -95,7 +95,7 @@ graph LR
 
 **验收脚本**：`tests/acceptance/check_target_pages.py`（真实 Chromium，62 项检查；拦截所有非站点请求以证明离线可用）。
 
-**实现说明**：`/static/assets` 与 `/static/vendor` 作为挂载点，`/static/product` 仍是独立路由（早期把整个 `/static` 挂载导致该页 404）；故障中间件只豁免这两个资源前缀，`/static/product` 在 `outage` 下仍返回 500（`test_assets_are_not_business_pages`）。
+**实现说明**：`/static/assets` 与 `/static/vendor` 作为挂载点，`/static/product` 仍是独立路由（早期把整个 `/static` 挂载导致该页 404）；故障中间件只豁免这两个资源前缀，`/static/product` 在 `outage` 下仍返回 500（`test_assets_are_not_business_pages`）。2026-10-26 起资产按框架归位为 `web/targets/{shared,react,vue}`，挂载点改为 `/static/{shared,react,vue}`，见 `changelog/2026-10-26.md`。
 
 ### 阶段 5：容器与运行文档
 

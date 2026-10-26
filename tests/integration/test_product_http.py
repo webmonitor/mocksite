@@ -60,9 +60,9 @@ async def test_product_page_serves_local_assets_only(stack: Stack) -> None:
     """No CDN: every referenced asset is same-origin and reachable."""
     body = (await stack.site.get("/static/product")).text
     for path in (
-        "/static/assets/shop.css",
-        "/static/assets/product.js",
-        "/static/assets/img/coffee-natural.svg",
+        "/static/shared/shop.css",
+        "/static/shared/product.js",
+        "/static/shared/img/coffee-natural.svg",
     ):
         assert path in body
         response = await stack.site.get(path)

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <title>{{ title }}</title>
     {% for asset in vendor %}
-    <script src="/static/vendor/{{ asset }}"></script>
+    <script src="/static/{{ framework }}/{{ asset }}"></script>
     {% endfor %}
     <script id="mocksite-config" type="application/json">
       {
@@ -16,8 +16,8 @@
         document.getElementById('mocksite-config').textContent
       );
     </script>
-    <script src="/static/assets/list.js"></script>
-    <script src="/static/assets/{{ script }}"></script>
+    <script src="/static/shared/list.js"></script>
+    <script src="/static/{{ framework }}/{{ script }}"></script>
   </head>
   <body>
     {#- data-ready / data-revision are set by the page script only after rows

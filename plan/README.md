@@ -2,7 +2,7 @@
 
 本目录记录实施任务与进度；页面、状态、管理后台及 API 的目标契约以 [项目 README](../README.md) 为准。变更已经发生后记录到 [changelog](../changelog/README.md)，不能把计划写成已交付能力。
 
-当前状态：阶段 0–5 已完成，站点可一条命令启动；商品详情页已重构为真实电商结构，管理后台已重设计为向导式并内嵌实时预览（见 2026-10-25 变更记录）。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；阶段 6 的扩展故障与安全探针仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
+当前状态：阶段 0–5 已完成，站点可一条命令启动；站点已收敛为**单条通知**，管理后台为单页控制台并内嵌实时预览（见 2026-10-26 变更记录）。列表页、分页与 React/Vue 运行时已删除，阶段 4 随之作废。`pyproject.toml`、`web/package.json` + `pnpm-lock.yaml`、`deploy/dev.Dockerfile`、`compose.yaml` 的 `dev` 服务、`src/mocksite/state/`、`src/mocksite/scenarios/`、`src/mocksite/{config,cli}.py`、`admin/{auth,api}.py`、`site/{render,routes}.py` 已落地，进程可实际启动并响应两个端口；阶段 6 的扩展故障与安全探针仍待实现。首轮交付包含 P1–P3，管理后台是必交付内容。
 
 ## 实施阶段
 
@@ -13,9 +13,8 @@ graph LR
   S0[0 工具链骨架 ✅] --> S1[1 状态内核 ✅]
   S1 --> S2[2 双端口 HTTP ✅]
   S2 --> S3[3 管理后台 SPA ✅]
-  S2 --> S4[4 列表与 CSR ✅]
-  S3 --> S5[5 容器与运行 ✅]
-  S4 --> S5
+  S2 --> S5[5 容器与运行 ✅]
+  S3 --> S5
   S5 --> S6[6 P4 扩展]
 ```
 
@@ -25,7 +24,6 @@ graph LR
 | 1 状态内核 ✅ | `src/mocksite/state/{models,patch,store,errors}.py`、`scenarios/registry.py` | 纯逻辑无 HTTP；校验、提交、版本递增、静态页重渲在同一次锁内完成 | `tests/unit` 通过；非法输入不改变状态也不推进版本 |
 | 2 双端口 HTTP ✅ | `src/mocksite/cli.py`、`config.py`、`admin/{auth,api}.py`、`site/{render,routes}.py`、`site/templates/*` | 单进程、两个监听器共享同一个 `StateStore`，禁止多 worker；9001 不挂站点路由 | 401/415/413/400 与 `no-store`、`X-Mocksite-Revision` 符合 §5.2 |
 | 3 管理后台 SPA ✅ | `web/admin/src/**`（`lib/api.ts`、`components/ui.tsx`、`features/{connection,state,scenarios,targets}`） | token 只存页面内存；同源调用 `/_admin/*`；失败保留表单内容 | 真实浏览器完成“默认价 → 修改 → 恢复”；500 期间仍能恢复 |
-| 4 列表与 CSR ✅ | `site/static/{vendor,assets}/`、`site/templates/{list,deals}.html`、`/react/list`、`/vue/list`、`/dynamic/deals` | 本地 UMD 资产、无 CDN；行必须是 `<table>` 结构以匹配 §3.3 选择器 | 浏览器离线渲染；分页得到完整有序 ID；空列表、加载失败、字段缺失、重复行可区分 |
 | 5 容器与运行 ✅ | `deploy/Dockerfile`、`compose.yaml`、`compose.dev.yaml`、`.env.example`、`scripts/control.py` | 非 root、只读根文件系统；基础 Compose 不发布 9001，dev overlay 才映射 `127.0.0.1:9001` | 一条命令启动并访问后台；两个平台分别完成基线、变化、故障、恢复 |
 | 6 P4 扩展 | `/flaky`、`/slow`、单页覆盖、安全探针 | 确定性序列与计数，reset 清零；探针只接受固定枚举 | 相同序列产生相同响应；受限地址未被访问（出口或探针计数证据） |
 
@@ -80,9 +78,10 @@ graph LR
 
 **验收脚本**：`tests/acceptance/check_admin_ui.py`（真实 Chromium，可重复执行，先 `POST /_admin/reset` 建立已知基线）。
 
-**尚未覆盖**：后台未做列表分页预览；目标页 `/react/list`、`/vue/list`、`/dynamic/deals` 仍为规划中（阶段 4），后台已如实标注。
 
-### 阶段 4：列表与 CSR
+### 阶段 4：列表与 CSR（已作废）
+
+> 2026-10-26：站点收敛为单条通知，列表页、分页、React/Vue 运行时与 `entries`/`page_size` 数据全部删除。以下记录保留为历史，对应代码已不存在。
 
 - [x] 落地本地 React/Vue UMD 资产与许可证/完整性清单（可复用 Agent `tests/fixtures/static/vendor/` 的版本与校验值，资产随站点分发）。
   `src/mocksite/site/static/vendor/`：react 18.3.1、react-dom 18.3.1、vue 3.5.43 的 UMD 包与各自 MIT 许可证；`manifest.json` 记录来源 URL、`sha512` 与字节数，`tests/unit/test_site_render_lists.py` 逐文件校验哈希、大小与许可证存在性。资产经 `/static/vendor/*` 由站点进程直接分发，无 CDN。
@@ -106,18 +105,37 @@ graph LR
 - [x] 记录采集方接入所需的两条地址（采集地址/预览地址）与端口边界，保持管理端口对采集出口不可达。
   `GET /_admin/meta` 同时给出 `collect_url` 与 `preview_url`；默认采集地址为 `http://site:9000`（compose 服务名，实测容器内可解析；`mocksite` 只是项目名，不解析——曾因此返回 `Name or service not known`，已修正并有单测锁定）。
 - [x] 运行文档：构建、启动、后台访问与认证、管理请求、关闭，并验证宿主与容器内两条访问路径。
-  README §6.4 覆盖 `cp .env.example .env` → `docker compose up --build -d --wait` → `/health` → overlay 打开后台 → `control.py` 操作 → `down`，并记录已验证的边界。容器内实测 `http://site:9000/{health,ssr/product,api/data,react/list}` 与 `http://site:9001/_admin/state` 均为 200。
+  README §6.4 覆盖 `cp .env.example .env` → `docker compose up --build -d --wait` → `/health` → overlay 打开后台 → `control.py` 操作 → `down`，并记录已验证的边界。容器内实测 `http://site:9000/{health,ssr/notice,api/views}` 与 `http://site:9001/_admin/state` 均为 200。
 - [x] 完成 README §5.1 全部后台功能的浏览器验收并保留证据。
-  `tests/acceptance/check_admin_ui.py` → `42/42`，`tests/acceptance/check_target_pages.py` → `62/62`，两者均针对 Compose 启动的真实栈执行（默认端口改为 9000/9001）。
+  `tests/acceptance/check_admin_ui.py` 与 `check_target_pages.py` 均针对 Compose 启动的真实栈执行（默认端口 9000/9001）；2026-10-26 精简后为 34 项与 39 项。
 
 ### 阶段 6：P4 扩展
 
 - [ ] `/flaky` 固定序列与按端点计数，reset 清零。
 - [ ] `/slow?ms=` 仅影响当前请求，边界 0–30000，非法输入 400。
-- [ ] 单页数据覆盖，显式出现在状态中，reset 清除。
 - [ ] `/redirect-private?target=` 与 `/private-resource`，只接受固定枚举。
 
-### 阶段 7：真实详情页与向导式后台（本轮重构）
+### 阶段 9：站点收敛为单条通知（本轮）
+
+需求调整：mocksite 只需要服务 WebMonitor 的真实用法——盯住**一条通知**。列表、分页与两套框架运行时都是无关负载，删除。
+
+- [x] 删除目标站列表路由 `/react/list`、`/vue/list`、`/dynamic/archive` 与 `/api/data`；只保留 `/static/notice`、`/ssr/notice`、`/api/views`、`/health` 与 `/static/shared` 挂载。
+  `site/routes.py` 重写；`tests/integration/test_site_http.py::test_removed_list_routes_are_gone` 逐条锁定 404。
+- [x] 删除 `Entry`、`entries`、`page_size`、`page_count` 与 `MAX_ENTRIES`；`BusinessData` 只剩 `notice`。
+  `state/models.py`；`BusinessData.model_validate({..., "entries": []})` 会因 `extra="forbid"` 报错，有单测锁定。
+- [x] 删除 `render_list`、`render_archive`、`entries_wire`、`VENDOR_REACT`、`VENDOR_VUE`、`list.html`、`archive.html`。
+  `site/render.py` 只剩 `render_notice` 与 `date_parts`。
+- [x] 删除 `web/targets/{react,vue}` 全部内容与 `shared/{list.js,archive.js,list.css}`；`force-include` 从三条降为一条，`manifest.json` 的 `assets` 清空。
+  `pyproject.toml`、`web/targets/manifest.json`；`tests/unit/test_package.py` 锁定单条 force-include 与空清单。
+- [x] 场景从 11 个降为 8 个，分组从 4 个降为 3 个（`baseline`/`fee`/`content`），删除 `empty_list`、`duplicate_rows`、`pagination_grow`。
+  `scenarios/registry.py`。
+- [x] 管理后台从四步向导改为**单页控制台**：场景 + 通知字段编辑 + 实时预览 + 事实摘要；删除选择器参考表、字段级 diff、`Explainer`、`StepChip` 与列表编辑标签页。
+  `web/admin/src/{App.tsx,components/ui.tsx,features/{preview,scenarios,state}}`；`features/targets/` 整个目录删除。
+- [x] 测试与两个浏览器验收脚本按新界面重写。
+
+**验证**：`pytest -q` → 204 unit + 62 integration 全通过；`check_admin_ui.py` 与 `check_target_pages.py` 针对真实 Compose 栈执行。
+
+### 阶段 7：真实详情页与向导式后台（历史）
 
 - [x] 商品页重构为真实电商详情页：图库、多重价格节点、评分、库存、变体、规格、懒加载评价、推荐位。
   `site/templates/product.html`（约 12.5 KB）+ `site/static/assets/{shop.css,product.js,img/*.svg}`；资产全部本地分发。
@@ -136,7 +154,7 @@ graph LR
 
 **验证**：容器内 `pytest -q` → 301 passed；`ruff check src tests` 干净；`ruff format --check` 干净。
 
-### 阶段 8：移除结构性破坏场景（范围收敛）
+### 阶段 8：移除结构性破坏场景（历史）
 
 需求调整：本项目只验证**不同场景下的页面数据切换**，不验证 DOM 结构被改写后的提取行为。据此移除全部结构性破坏能力。
 
@@ -157,7 +175,7 @@ graph LR
 ## 已知前置阻塞
 
 1. ~~**Agent 出口例外硬编码。**~~ 不属于本仓库职责：mocksite 只承诺监听 9000（页面）与 9001（管理）并保持管理端口不对外发布；采集方的出口放行属于其自身部署配置，本仓库不再维护按平台划分的接入目录。
-2. ~~**选择器契约要求表格结构。**~~ 已在阶段 4 解决：`/react/list`、`/vue/list`、`/dynamic/deals` 均渲染真实 `<table>`，`#inventory tbody tr.item` 与 `td.price` 在真实 DOM 上成立。
+2. ~~**选择器契约要求表格结构。**~~ 已随列表页一起移除：站点不再渲染表格，选择器只覆盖通知页。
 
 ## P1：管理后台与商品页面
 
@@ -173,12 +191,11 @@ graph LR
 
 依赖 P1 的状态与管理 API。
 
-- [x] 实现 React/Vue 列表、本地前端资产、就绪标记及数据版本展示。见阶段 4。
-- [x] 实现动态分页、稳定行 ID、加载期间禁用与末页结束行为。见阶段 4。
-- [x] 实现列表价格变化、空列表、字段改名、重复行及分页增长场景。见阶段 4。
-- [x] 完成后台列表增删改、页大小编辑及目标页面入口。（阶段 3 已交付；列表页本身属阶段 4）
-- [x] 提供 CSS/XPath 复制，区分宿主预览地址与平台采集地址。见阶段 3 的 `/_admin/meta` 与 `TargetPanel`。
-- [x] 验证离线渲染、完整有序分页及后台修改后的实际页面内容。见 `tests/acceptance/check_target_pages.py`（62 项，含“无外部请求”断言）。
+> 2026-10-26 起本组作废：列表页与分页已删除，站点只提供一条通知。保留勾选记录仅为历史可追溯。
+
+- [x] 实现本地前端资产与就绪标记。（已随列表页删除）
+- [x] 完成后台目标页面入口与采集地址展示。见阶段 3 的 `/_admin/meta`。
+- [x] 验证离线渲染与后台修改后的实际页面内容。见 `tests/acceptance/check_target_pages.py`（含“无外部请求”断言）。
 
 ## P3：容器与运行
 
@@ -188,7 +205,7 @@ graph LR
 - [x] 提供可执行的启动、后台认证、管理请求和关闭文档。见 README §6.4。
 - [x] 在运行文档中说明采集方如何接入（地址、端口、token），出口放行由采集方自行配置。见 §6.3 与 §6.4。
 - [x] 用任意 HTTP 与无头浏览器采集方式分别验证基线、变化、故障和恢复行为。见两个浏览器验收脚本。
-- [x] 完成 README §5.1 全部后台功能的浏览器验收，包括错误凭据、非法输入、请求失败和重置。`42/42`。
+- [x] 完成 README §5.1 全部后台功能的浏览器验收，包括错误凭据、非法输入、请求失败和重置。
 - [x] 记录执行环境、操作步骤、预期结果及实际证据。见 README §6.4 与 changelog。
 
 ## P4：后续扩展
@@ -197,7 +214,6 @@ graph LR
 
 - [ ] 实现确定性失败序列与计数器重置。
 - [ ] 实现单请求延迟及参数边界校验。
-- [ ] 实现单页面数据覆盖与 reset 清除。
 - [ ] 实现固定私网重定向和子资源探针，以出口记录或探针计数证明受限地址未被访问。
 
 ## 维护方式

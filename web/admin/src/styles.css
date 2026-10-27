@@ -1,9 +1,9 @@
 /*
  * Admin console styling.
  *
- * Layout intent: a step bar on top, the working area on the left, and a live
- * preview of the target page pinned on the right — so a change and its effect
- * are always visible together.
+ * Layout intent: the working area on the left, a live preview of the target
+ * page pinned on the right — so a change and its effect are always visible
+ * together.
  */
 
 :root {
@@ -171,91 +171,6 @@ code {
 .topbar-sub {
   color: var(--muted);
   font-size: 0.82rem;
-}
-
-/* ---------- step bar ---------- */
-
-.steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.6rem;
-  margin-bottom: 1rem;
-}
-
-@media (max-width: 820px) {
-  .steps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  text-align: left;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-}
-
-@media (prefers-color-scheme: dark) {
-  .step {
-    background: var(--surface);
-  }
-}
-
-.step-current {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.step-done {
-  border-color: var(--ok);
-}
-
-.step-index {
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 0.78rem;
-  font-weight: 700;
-  background: var(--surface-2);
-  color: var(--muted);
-}
-
-.step-current .step-index {
-  background: var(--accent);
-  color: #fff;
-}
-
-.step-done .step-index {
-  background: var(--ok);
-  color: #fff;
-}
-
-.step-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.step-text strong {
-  font-size: 0.86rem;
-}
-
-.step-text small {
-  color: var(--muted);
-  font-size: 0.74rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ---------- workspace split ---------- */
@@ -441,13 +356,6 @@ button.copy {
   margin-top: 0.8rem;
 }
 
-.baseline-actions {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.6rem;
-}
-
 .sticky-actions {
   border-top: 1px solid var(--border);
   padding-top: 0.8rem;
@@ -528,33 +436,6 @@ button.copy {
   margin: 0;
   font-weight: 500;
   word-break: break-word;
-}
-
-/* ---------- explainer ---------- */
-
-.explainer {
-  margin-top: 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface);
-}
-
-.explainer summary {
-  cursor: pointer;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.explainer-body {
-  padding: 0 0.75rem 0.7rem;
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-
-.explainer-body p {
-  margin: 0.3rem 0;
 }
 
 /* ---------- scenario picker ---------- */
@@ -670,9 +551,8 @@ button.copy {
   color: var(--warn);
 }
 
-/* ---------- editor tabs ---------- */
+/* ---------- tabs ---------- */
 
-.editor-tabs,
 .preview-tabs {
   display: flex;
   gap: 0.35rem;
@@ -692,117 +572,6 @@ button.copy {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
-}
-
-/* ---------- rows table ---------- */
-
-table.rows {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-table.rows th {
-  text-align: left;
-  font-size: 0.76rem;
-  color: var(--muted);
-  font-weight: 600;
-  padding: 0.3rem 0.35rem;
-  border-bottom: 1px solid var(--border);
-}
-
-table.rows td {
-  padding: 0.25rem 0.35rem;
-  vertical-align: top;
-}
-
-table.rows input {
-  font-size: 0.83rem;
-  padding: 0.3rem 0.4rem;
-}
-
-/* ---------- option groups ---------- */
-
-.option-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0.7rem;
-}
-
-.option-group {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.6rem 0.7rem 0.7rem;
-  margin: 0;
-}
-
-.option-group legend {
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0 0.3rem;
-}
-
-.option-group legend code {
-  color: var(--muted);
-  font-weight: 400;
-  font-size: 0.72rem;
-}
-
-.option {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.32rem 0.4rem;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 0.82rem;
-}
-
-.option:hover {
-  background: var(--surface);
-}
-
-.option input {
-  width: auto;
-  margin-top: 0.25rem;
-  flex: 0 0 auto;
-}
-
-.option span {
-  display: flex;
-  flex-direction: column;
-}
-
-.option small {
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-
-.option-active {
-  background: var(--accent-soft);
-}
-
-.option-active strong {
-  color: var(--accent);
-}
-
-.delay-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.delay-field input {
-  max-width: 140px;
-}
-
-.delay-field small {
-  font-weight: 400;
-  color: var(--muted);
-  font-size: 0.73rem;
 }
 
 /* ---------- preview ---------- */
@@ -867,7 +636,7 @@ table.rows input {
 }
 
 /* The page renders at a fixed desktop width and is scaled to fit, so the
-   product layout keeps its two-column shape (gallery beside the buy box). */
+   notice layout keeps its two-column shape (gallery beside the fee block). */
 .preview-shell {
   overflow: hidden;
   position: relative;
@@ -880,128 +649,4 @@ table.rows input {
   background: #fff;
   display: block;
   transform-origin: top left;
-}
-
-/* ---------- selector reference ---------- */
-
-.selector-reference {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.selector-page header {
-  margin-bottom: 0.5rem;
-}
-
-.selector-page header h3 code {
-  font-size: 0.92rem;
-  background: var(--surface-2);
-  padding: 0.1rem 0.4rem;
-  border-radius: 5px;
-}
-
-.role-block {
-  border-left: 3px solid var(--border-strong);
-  padding-left: 0.7rem;
-  margin-bottom: 0.7rem;
-}
-
-.role-primary {
-  border-left-color: var(--accent);
-}
-
-.role-ready {
-  border-left-color: var(--warn);
-}
-
-.role-supporting {
-  border-left-color: var(--muted);
-}
-
-.role-decoy {
-  border-left-color: var(--decoy);
-}
-
-.role-decoy h4 {
-  color: var(--decoy);
-}
-
-.role-block ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.45rem;
-}
-
-.selector-row {
-  font-size: 0.8rem;
-  background: var(--surface);
-  border-radius: 7px;
-  padding: 0.4rem 0.55rem;
-}
-
-.selector-head {
-  display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.2rem;
-}
-
-.selector-note {
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-
-.selector-code {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.76rem;
-}
-
-.code-label {
-  flex: 0 0 40px;
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.selector-code code {
-  overflow-wrap: anywhere;
-  flex: 1 1 auto;
-}
-
-/* ---------- diff ---------- */
-
-.diff-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
-}
-
-.diff-table th {
-  text-align: left;
-  font-size: 0.74rem;
-  color: var(--muted);
-  padding: 0.3rem 0.4rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.diff-table td {
-  padding: 0.28rem 0.4rem;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-  overflow-wrap: anywhere;
-}
-
-.diff-before {
-  color: var(--error);
-}
-
-.diff-after {
-  color: var(--ok);
 }

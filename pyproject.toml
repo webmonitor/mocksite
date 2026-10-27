@@ -41,8 +41,6 @@ include = [
 # for an editable install.
 [tool.hatch.build.targets.wheel.force-include]
 "web/targets/shared" = "mocksite/_static/shared"
-"web/targets/react" = "mocksite/_static/react"
-"web/targets/vue" = "mocksite/_static/vue"
 
 [project.scripts]
 mocksite = "mocksite.cli:main"

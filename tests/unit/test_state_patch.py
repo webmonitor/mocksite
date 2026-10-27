@@ -16,18 +16,17 @@ def _patched(payload: Any) -> State:
 
 
 def test_objects_merge_recursively() -> None:
-    state = _patched({"business": {"product": {"name": "Renamed"}}})
-    assert state.business.product.name == "Renamed"
-    assert state.business.product.current_price == DEFAULT_STATE.business.product.current_price
-    assert state.business.items == DEFAULT_STATE.business.items
-    assert state.business.page_size == DEFAULT_STATE.business.page_size
+    state = _patched({"business": {"notice": {"title": "改过的标题"}}})
+    assert state.business.notice.title == "改过的标题"
+    assert state.business.notice.current_fee == DEFAULT_STATE.business.notice.current_fee
+    assert state.business.notice.body == DEFAULT_STATE.business.notice.body
 
 
-def test_partial_patch_leaves_other_sections_untouched() -> None:
-    state = _patched({"faults": {"kind": "outage"}})
-    assert state.faults.kind == "outage"
-    assert state.faults.delay_ms == 0
-    assert state.business == DEFAULT_STATE.business
+def test_patch_touches_only_the_addressed_field() -> None:
+    state = _patched({"business": {"notice": {"view_count": 7}}})
+    assert state.business.notice.view_count == 7
+    assert state.business.notice.title == DEFAULT_STATE.business.notice.title
+    assert state.business.notice.current_fee == DEFAULT_STATE.business.notice.current_fee
 
 
 def test_empty_patch_is_a_no_op() -> None:
@@ -35,31 +34,42 @@ def test_empty_patch_is_a_no_op() -> None:
 
 
 def test_arrays_replace_wholesale() -> None:
-    state = _patched({"business": {"items": [{"id": "Z", "name": "Zeta", "price": "5.00"}]}})
-    assert [row.id for row in state.business.items] == ["Z"]
+    """Sending one attachment deletes the rest; there is no per-item merge."""
+    state = _patched(
+        {
+            "business": {
+                "notice": {
+                    "attachments": [
+                        {"id": "only", "name": "附件.pdf", "src": "/static/shared/img/attachment-pdf.svg"}
+                    ]
+                }
+            }
+        }
+    )
+    assert [item.id for item in state.business.notice.attachments] == ["only"]
 
 
-def test_empty_array_clears_rows() -> None:
-    assert _patched({"business": {"items": []}}).business.items == ()
+def test_empty_array_clears_the_body() -> None:
+    assert _patched({"business": {"notice": {"body": []}}}).business.notice.body == ()
 
 
-def test_replacing_rows_does_not_mutate_defaults() -> None:
-    _patched({"business": {"items": []}})
-    assert len(DEFAULT_STATE.business.items) == 3
+def test_replacing_arrays_does_not_mutate_defaults() -> None:
+    _patched({"business": {"notice": {"body": []}}})
+    assert len(DEFAULT_STATE.business.notice.body) == 6
 
 
 def test_revision_is_preserved_by_patch() -> None:
     state = State(revision=7, business=DEFAULT_STATE.business)
-    assert apply_patch(state, {"business": {"page_size": 3}}).revision == 7
+    assert apply_patch(state, {"business": {"notice": {"view_count": 3}}}).revision == 7
 
 
 @pytest.mark.parametrize(
     "payload",
     [
-        {"business": {"product": {"current_price": None}}},
-        {"business": {"items": None}},
-        {"business": {"items": [{"id": "A", "name": None, "price": "1.00"}]}},
-        {"faults": {"kind": None}},
+        {"business": {"notice": {"current_fee": None}}},
+        {"business": {"notice": {"attachments": None}}},
+        {"business": {"notice": {"title": None}}},
+        {"business": {"notice": {"body": [None]}}},
     ],
 )
 def test_null_is_rejected_everywhere(payload: Any) -> None:
@@ -73,8 +83,8 @@ def test_null_is_rejected_everywhere(payload: Any) -> None:
     [
         {"revision": 5},
         {"business": {"revision": 5}},
-        {"business": {"product": {"revision": 5}}},
-        {"business": {"items": [{"revision": 1}]}},
+        {"business": {"notice": {"revision": 5}}},
+        {"business": {"notice": {"body": [{"revision": 1}]}}},
     ],
 )
 def test_revision_is_read_only_at_any_depth(payload: Any) -> None:
@@ -88,10 +98,23 @@ def test_revision_is_read_only_at_any_depth(payload: Any) -> None:
     [
         ({"nope": {}}, "nope"),
         ({"business": {"nope": 1}}, "business.nope"),
-        ({"business": {"product": {"nope": 1}}}, "business.product.nope"),
+        ({"business": {"notice": {"nope": 1}}}, "business.notice.nope"),
         (
-            {"business": {"items": [{"id": "A", "name": "n", "price": "1.00", "x": 1}]}},
-            "business.items.0.x",
+            {
+                "business": {
+                    "notice": {
+                        "attachments": [
+                            {
+                                "id": "a",
+                                "name": "n",
+                                "src": "/s",
+                                "x": 1,
+                            }
+                        ]
+                    }
+                }
+            },
+            "business.notice.attachments.0.x",
         ),
     ],
 )
@@ -107,7 +130,7 @@ def test_unknown_keys_rejected(payload: Any, loc: str) -> None:
         {"business": 1},
         {"business": []},
         {"business": "x"},
-        {"faults": None},
+        {"business": {"notice": []}},
     ],
 )
 def test_sections_must_be_objects(payload: Any) -> None:
@@ -125,15 +148,14 @@ def test_body_must_be_an_object(payload: Any) -> None:
 @pytest.mark.parametrize(
     ("payload", "loc"),
     [
-        ({"business": {"page_size": 0}}, "business.page_size"),
-        ({"business": {"page_size": 101}}, "business.page_size"),
-        ({"business": {"product": {"current_price": "1e2"}}}, "business.product.current_price"),
-        ({"business": {"product": {"current_price": 1.5}}}, "business.product.current_price"),
-        ({"business": {"product": {"currency": "usd"}}}, "business.product.currency"),
-        ({"faults": {"delay_ms": 30_001}}, "faults.delay_ms"),
+        ({"business": {"notice": {"view_count": -1}}}, "business.notice.view_count"),
+        ({"business": {"notice": {"current_fee": "1e2"}}}, "business.notice.current_fee"),
+        ({"business": {"notice": {"current_fee": 1.5}}}, "business.notice.current_fee"),
+        ({"business": {"notice": {"currency": "cny"}}}, "business.notice.currency"),
+        ({"business": {"notice": {"effective_date": "2026/11/01"}}}, "business.notice.effective_date"),
         (
-            {"business": {"items": [{"id": "", "name": "n", "price": "1.00"}]}},
-            "business.items.0.id",
+            {"business": {"notice": {"attachments": [{"id": "", "name": "n", "src": "/s"}]}}},
+            "business.notice.attachments.0.id",
         ),
     ],
 )
@@ -145,15 +167,22 @@ def test_field_errors_are_located(payload: Any, loc: str) -> None:
 
 def test_all_errors_are_reported_together() -> None:
     with pytest.raises(StateValidationError) as excinfo:
-        _patched({"business": {"page_size": 0}, "faults": {"delay_ms": -1}})
+        _patched({"business": {"notice": {"view_count": -1, "current_fee": "1e2"}}})
     assert {error["loc"] for error in excinfo.value.errors} == {
-        "business.page_size",
-        "faults.delay_ms",
+        "business.notice.view_count",
+        "business.notice.current_fee",
     }
+
+
+def test_faults_section_is_rejected_as_unknown() -> None:
+    """Fault injection was removed; a stale client must get a clear 400."""
+    with pytest.raises(StateValidationError) as excinfo:
+        _patched({"faults": {"kind": "outage"}})
+    assert excinfo.value.errors[0]["loc"] == "faults"
 
 
 def test_rejected_patch_never_mutates_input_state() -> None:
     before = DEFAULT_STATE.model_dump(mode="json")
     with pytest.raises(StateValidationError):
-        _patched({"business": {"product": {"name": "ok"}, "page_size": 0}})
+        _patched({"business": {"notice": {"title": "ok", "view_count": -1}}})
     assert DEFAULT_STATE.model_dump(mode="json") == before

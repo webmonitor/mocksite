@@ -1,10 +1,9 @@
 /**
- * Live preview of a target page, embedded in the admin UI.
+ * Live preview of the target page, embedded in the admin UI.
  *
- * This is the feature that makes the workflow legible: after applying a
- * scenario or editing data you see the actual page the collector will fetch,
- * without leaving the admin. The iframe points at the *preview* origin (the
- * browser-reachable one), never the collect origin.
+ * After applying a scenario or editing data you see the actual page the
+ * collector will fetch, without leaving the admin. The iframe points at the
+ * *preview* origin (the browser-reachable one), never the collect origin.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -13,14 +12,15 @@ import { CopyButton } from '@/components/ui'
 import type { TargetPage } from '@/lib/api'
 
 /** Pages worth previewing first, in workflow order. */
-const PREFERRED = ['/static/product', '/ssr/product', '/react/list', '/dynamic/deals', '/api/data']
+const PREFERRED = ['/static/notice', '/ssr/notice']
 
 /**
  * The preview renders the page at this width and scales it down to fit.
  *
- * Rendering the iframe at its container width was wrong: the product page has
- * a 900px breakpoint, so a narrow panel stacked the buy box *below* the gallery
- * and the price — the one thing the preview exists to show — was off-screen.
+ * Rendering the iframe at its container width was wrong: the notice page has
+ * a 900px breakpoint, so a narrow panel stacked the fee block *below* the
+ * attachment gallery and the fee — the one thing the preview exists to show —
+ * was off-screen.
  */
 const DESKTOP_WIDTH = 1180
 
@@ -41,8 +41,12 @@ export function PreviewPanel({
   revision: number
   activeScenarioTitle: string | null
 }) {
-  const ordered = orderPages(pages.filter((page) => page.implemented))
-  const [path, setPath] = useState(ordered[0]?.path ?? '/static/product')
+  // Only HTML pages can be previewed in a frame; JSON endpoints would render
+  // as raw text and say nothing a collector cares about.
+  const ordered = orderPages(
+    pages.filter((page) => page.implemented && PREFERRED.includes(page.path)),
+  )
+  const [path, setPath] = useState(ordered[0]?.path ?? '/static/notice')
   // `nonce` forces a reload after every state change, so the preview can never
   // show a stale page while the revision badge claims otherwise.
   const [nonce, setNonce] = useState(0)
@@ -141,7 +145,7 @@ export function PreviewPanel({
             }}
             // The preview is same-origin with the admin listener only by accident
             // of deployment; sandbox it so a target page can never script the
-            // admin. Scripts must run: the CSR pages render in the browser.
+            // admin. Scripts must run: the click counter is client-filled.
             sandbox="allow-scripts allow-same-origin"
           />
         </div>

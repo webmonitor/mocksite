@@ -23,7 +23,7 @@ import uvicorn
 from mocksite.admin.api import create_admin_app
 from mocksite.config import ConfigError, Settings
 from mocksite.scenarios.registry import build_default_store
-from mocksite.site.render import render_product
+from mocksite.site.render import render_notice
 from mocksite.site.routes import create_site_app
 from mocksite.state.store import StateStore
 
@@ -32,7 +32,7 @@ LOG_FORMAT = "%(levelname)s %(name)s %(message)s"
 
 def _build_store() -> StateStore:
     store = build_default_store()
-    store.set_renderer(render_product)
+    store.set_renderer(render_notice)
     return store
 
 

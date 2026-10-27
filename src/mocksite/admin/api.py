@@ -8,7 +8,7 @@ Contract (README §5.2):
 * responses are ``no-store`` and carry the full state, including ``revision``;
 * unknown scenario -> 404;
 * the SPA shell at ``/`` is served from ``MOCKSITE_ADMIN_DIST`` and is
-  unaffected by site faults.
+  unaffected by site traffic.
 
 Logs record method, route template, status and revision only — never the
 Authorization header or the request body.
@@ -41,11 +41,10 @@ ADMIN_PREFIX = "/_admin"
 
 
 def state_document(state: State) -> dict[str, Any]:
-    """Wire representation: business + controls + revision, nothing else."""
+    """Wire representation: business + revision, nothing else."""
     return {
         "revision": state.revision,
         "business": state.business.model_dump(mode="json"),
-        "faults": state.faults.model_dump(mode="json"),
     }
 
 
@@ -209,7 +208,7 @@ def create_admin_app(
 
 
 def _mount_spa(app: FastAPI, admin_dist: Path) -> None:
-    """Serve the built admin SPA; the shell must work even during an outage."""
+    """Serve the built admin SPA; the shell must work without the target site."""
     index = admin_dist / "index.html"
     assets = admin_dist / "assets"
 

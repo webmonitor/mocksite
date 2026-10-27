@@ -1,11 +1,9 @@
 /**
  * Scenario picker.
  *
- * The old panel listed internal identifiers (`item_price_change`) with an
- * `affects` path, which is meaningless to anyone who did not write the server.
- * This one shows, per scenario: a Chinese title, what a collector will observe,
- * and which data field changes. The copy comes from the server, so the UI and
- * the API can never disagree.
+ * Each card shows a Chinese title, what a collector will observe, and which
+ * data field changes. The copy comes from the server, so the UI and the API can
+ * never disagree.
  */
 
 import { useMemo, useState } from 'react'
@@ -15,10 +13,8 @@ import { ApiError, type Scenario, type ScenarioGroup, type StateChange } from '@
 
 const GROUPS: { key: ScenarioGroup; label: string; hint: string }[] = [
   { key: 'baseline', label: '基线', hint: '建立或恢复已知起点' },
-  { key: 'price', label: '价格变化', hint: '商品与列表行的价格' },
-  { key: 'content', label: '商品内容', hint: '库存、评分、评价' },
-  { key: 'list', label: '列表与分页', hint: '行数、重复与分页' },
-  { key: 'fault', label: '故障注入', hint: '错误与延迟' },
+  { key: 'fee', label: '收费标准', hint: '通知现行标准' },
+  { key: 'content', label: '通知内容', hint: '状态、执行日期、标题、点击次数' },
 ]
 
 export function ScenarioPicker({
@@ -32,7 +28,7 @@ export function ScenarioPicker({
   busy: boolean
   onApply: (name: string) => Promise<StateChange>
 }) {
-  const [group, setGroup] = useState<ScenarioGroup>('price')
+  const [group, setGroup] = useState<ScenarioGroup>('fee')
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [pending, setPending] = useState<string | null>(null)
 

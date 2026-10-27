@@ -1,0 +1,543 @@
+/*
+ * Notice-detail page styling — modelled on Chinese university notice portals.
+ *
+ * Served from /static/shared/notice.css. Deliberately self-contained: no web
+ * fonts, no CDN, no external images — the page must render identically with
+ * the network switched off.
+ *
+ * Deliberately *not* modern: portals like notice.xidian.edu.cn use a fixed
+ * ~1200px canvas, a dark green header band, a centred article column and a
+ * plain sidebar. That dated look is part of the test value — a collector has to
+ * cope with the markup a real portal emits, not with a clean design system.
+ */
+
+:root {
+  --ink: #222;
+  --muted: #666;
+  --line: #d8dee4;
+  --surface: #f5f6f7;
+  --brand: #0b6b52;
+  --brand-soft: #e6f4ef;
+  --danger: #b3261e;
+  --warn: #8a5a00;
+  --band: #0d4f3c;
+  --band-ink: #d7e7e1;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #fff;
+}
+
+.width {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ---------- portal chrome ---------- */
+
+.head-top {
+  background: var(--band);
+  color: var(--band-ink);
+  font-size: 12px;
+}
+
+.head-top .width {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 6px 20px;
+}
+
+.head-top span + span {
+  margin-left: 14px;
+}
+
+.head-top a {
+  color: var(--band-ink);
+  text-decoration: none;
+}
+
+.head-top a:hover {
+  text-decoration: underline;
+}
+
+.site-header {
+  border-bottom: 3px solid var(--brand);
+  background: #fff;
+}
+
+.site-header .width {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 16px 20px;
+}
+
+.brandmark {
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: 0.01em;
+  color: var(--brand);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-nav {
+  display: flex;
+  gap: 22px;
+  font-size: 14px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.site-nav a {
+  color: var(--ink);
+  text-decoration: none;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.site-nav a:hover {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+/* ---------- breadcrumbs ---------- */
+
+.breadcrumbs {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 12px 0 4px;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.breadcrumbs li + li::before {
+  content: '/';
+  margin-right: 6px;
+  color: #b6bfc8;
+}
+
+.breadcrumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+/* ---------- two-column layout ---------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 40px;
+  padding: 18px 20px 56px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+}
+
+/* ---------- withdrawn banner ---------- */
+
+.withdrawn-banner {
+  border: 1px solid var(--danger);
+  background: #fdf1f0;
+  color: var(--danger);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin-bottom: 18px;
+}
+
+/* ---------- article head ---------- */
+
+.content-bt {
+  font-size: 26px;
+  line-height: 1.35;
+  font-weight: 700;
+  text-align: center;
+  margin: 6px 0 14px;
+  letter-spacing: 0.01em;
+}
+
+.content-bt-xia {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  font-size: 12.5px;
+  color: var(--muted);
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+
+.content-bt-xia a {
+  color: var(--brand);
+  text-decoration: none;
+}
+
+#view-count[data-loaded='false'] {
+  color: #b6bfc8;
+  min-width: 2ch;
+  display: inline-block;
+}
+
+/* ---------- the same instant, three renderings ---------- */
+
+.date-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.date-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.date-badge em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.date-full {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.date-timestamp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.date-effective {
+  margin-left: auto;
+}
+
+.date-value {
+  font-weight: 700;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---------- fee block: one target, several decoys ---------- */
+
+.fee-block {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.fee-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fee-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#current-fee {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--danger);
+  letter-spacing: -0.02em;
+}
+
+.fee-currency {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+#previous-fee {
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.change-badge {
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.fee-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+.unit-fee strong,
+.cap-fee strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---------- status ---------- */
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+[data-status='withdrawn'] .status-dot {
+  background: var(--danger);
+}
+
+/* ---------- body ---------- */
+
+.content-text {
+  font-size: 15.5px;
+  line-height: 1.9;
+  color: #2b3238;
+}
+
+.content-text p {
+  margin: 0 0 14px;
+  text-indent: 2em;
+}
+
+/* ---------- actions ---------- */
+
+.content-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  margin-bottom: 22px;
+}
+
+.btn-print {
+  height: 34px;
+  padding: 0 18px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.btn-print:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+#view-status {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+#view-status[data-state='error'] {
+  color: var(--danger);
+}
+
+/* ---------- attachments ---------- */
+
+.attachments-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--brand);
+}
+
+.attachment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+
+.attachment-icon {
+  flex: none;
+  display: block;
+}
+
+.attachment-name {
+  color: var(--ink);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.attachment-name:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.attachment-name[data-clicked='true'] {
+  color: var(--brand);
+}
+
+.attachment-size {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ---------- prev / next ---------- */
+
+.prev-next {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 16px;
+  font-size: 13.5px;
+}
+
+.prev-next p {
+  margin: 0 0 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.prev-next-label {
+  color: var(--muted);
+  flex: none;
+}
+
+.prev-next a {
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.prev-next a:hover {
+  color: var(--brand);
+}
+
+/* ---------- sidebar ---------- */
+
+.side-block {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.side-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--brand);
+  color: #fff;
+}
+
+.side-links {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+}
+
+.side-links li {
+  padding: 0 14px;
+}
+
+.side-links a {
+  display: block;
+  padding: 7px 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--line);
+}
+
+.side-links li:last-child a {
+  border-bottom: 0;
+}
+
+.side-links a:hover {
+  color: var(--brand);
+}
+
+/* ---------- footer ---------- */
+
+.site-footer {
+  border-top: 3px solid var(--brand);
+  background: var(--surface);
+  padding: 22px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.site-footer .width {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}

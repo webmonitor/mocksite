@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Acceptance: the admin console.
 
-Verifies the workflow the console advertises — connect (including a rejected
-token), follow the four steps, edit data, apply scenarios, watch the live
-preview follow, run an outage and recover — and that the token is never
-persisted.
+Verifies what the single-page console advertises — connect (including a
+rejected token), apply a scenario, edit the notice, watch the live preview
+follow, reset — and that the token is never persisted.
 
 Every check asserts something a *user* can observe. A revision bump alone is
 not evidence; the preview iframe must actually show the new content.
@@ -26,14 +25,8 @@ from _harness import (
 )
 
 
-def _step(page: Page, index: int) -> None:
-    page.locator(".step").nth(index).click()
-    page.wait_for_timeout(250)
-
-
 def _apply_scenario(page: Page, group: str, title: str) -> None:
     """Pick a scenario by its Chinese title inside a group tab."""
-    _step(page, 1)
     page.locator(".group-tab", has_text=group).click()
     page.wait_for_timeout(200)
     card = page.locator(".scenario-card", has_text=title)
@@ -59,7 +52,7 @@ def run(args, token: str) -> Results:
             "connect screen explains the tool",
             page.get_by_role("heading", name="mocksite 控制台").is_visible(),
         )
-        results.check("no state before auth", page.locator(".steps").count() == 0)
+        results.check("no state before auth", page.locator(".workspace").count() == 0)
 
         page.fill("#token", "wrong-token-wrong-token-wrong-token-xx")
         page.get_by_role("button", name="连接").click()
@@ -73,153 +66,122 @@ def run(args, token: str) -> Results:
 
         page.fill("#token", token)
         page.get_by_role("button", name="连接").click()
-        page.wait_for_selector(".steps", timeout=10_000)
+        page.wait_for_selector(".workspace", timeout=10_000)
         page.wait_for_timeout(1500)
 
-        results.check("four workflow steps shown", page.locator(".step").count() == 4)
+        # ---- one page, no wizard ------------------------------------------
+        results.check("no wizard step bar", page.locator(".step").count() == 0)
+        results.check("scenario panel present", page.locator(".scenario-cards").count() == 1)
+        results.check("editor present", page.locator("#notice-current-fee").count() == 1)
+        results.check("no selector reference", page.locator(".selector-reference").count() == 0)
+        results.check("no state diff panel", page.locator(".diff-table").count() == 0)
         results.check(
-            "step 1 is baseline",
-            "建立基线" in page.locator(".step").first.inner_text(),
+            "only notice pages are previewable",
+            page.locator(".preview-tabs .tab").count() == 2,
         )
 
         frame = page.frame_locator(".preview-frame")
         results.check("live preview embedded", page.locator(".preview-frame").count() == 1)
         results.check(
             "preview renders the target page",
-            frame.locator("#current-price").inner_text() == "128.50",
+            frame.locator("#current-fee").inner_text() == "128.50",
         )
         results.check(
-            "preview review list reaches ready",
-            frame.locator('#reviews[data-ready="true"]').count() == 1,
+            "preview click counter is filled",
+            frame.locator('#view-count[data-loaded="true"]').count() == 1,
         )
 
-        # ---- step 1: baseline ---------------------------------------------
-        _step(page, 0)
-        results.check("baseline panel visible", "建立基线" in page.inner_text(".section"))
-        page.get_by_role("button", name="应用基线场景").click()
-        page.wait_for_timeout(1500)
+        # ---- scenarios drive the preview -----------------------------------
+        _apply_scenario(page, "收费标准", "收费标准下调")
         results.check(
-            "baseline badge after applying",
+            "preview follows fee_change",
+            frame.locator("#current-fee").inner_text() == "96.00",
+        )
+        results.check(
+            "active scenario is badged",
             page.locator(".badge-scenario").count() >= 1,
         )
-
-        # ---- step 2: scenarios + preview follows ---------------------------
-        _apply_scenario(page, "价格变化", "商品现价下降")
         results.check(
-            "preview follows price_change",
-            frame.locator("#current-price").inner_text() == "96.00",
+            "group tabs cover baseline, fee and content",
+            page.locator(".group-tab").count() == 3,
         )
         results.check(
-            "wizard advanced to verify step",
-            "step-current" in (page.locator(".step").nth(2).get_attribute("class") or ""),
-        )
-        results.check("state diff rendered", page.locator(".diff-table").count() == 1)
-        results.check(
-            "diff names the changed field",
-            "business.product.current_price" in page.inner_text(".diff-table"),
-        )
-        results.check(
-            "selector reference grouped by role",
-            page.locator(".role-primary").count() >= 1 and page.locator(".role-decoy").count() >= 1,
-        )
-        results.check(
-            "decoys are labelled",
-            "诱饵节点" in page.inner_text(".selector-reference"),
-        )
-        results.check(
-            "no structural scenario is advertised",
-            page.locator(".group-tab", has_text="结构变化").count() == 0,
+            "no list scenario is advertised",
+            page.locator(".group-tab", has_text="列表与分页").count() == 0,
         )
 
-        _apply_scenario(page, "商品内容", "商品缺货")
+        _apply_scenario(page, "通知内容", "通知撤回")
         results.check(
-            "stock_out disables the cart button",
-            frame.locator("#add-to-cart").is_disabled(),
+            "notice_withdrawn shows a banner",
+            frame.locator("#withdrawn-banner").count() == 1,
         )
         results.check(
-            "stock_out keeps the price visible",
-            frame.locator("#current-price").inner_text() == "128.50",
-        )
-
-        _apply_scenario(page, "商品内容", "评分下降")
-        results.check(
-            "rating_change updates the rating node",
-            frame.locator("#rating-value").inner_text() == "3.20",
-        )
-        results.check(
-            "rating_change updates the review count",
-            "131" in frame.locator("#review-count").inner_text(),
+            "notice_withdrawn keeps the fee visible",
+            frame.locator("#current-fee").inner_text() == "128.50",
         )
 
-        _apply_scenario(page, "列表与分页", "列表变长，分页增加")
+        _apply_scenario(page, "通知内容", "执行日期推迟")
         results.check(
-            "pagination_grow adds rows on the deals page",
-            True,
+            "effective_date_shift updates the effective date",
+            frame.locator("#effective-date").inner_text() == "2026-12-01",
         )
-        _apply_scenario(page, "价格变化", "列表 A 行涨价")
         results.check(
-            "item_price_change keeps the product price",
-            frame.locator("#current-price").inner_text() == "128.50",
+            "effective_date_shift leaves the publication alone",
+            frame.locator("#published-at").inner_text() == "2026-10-20 14:32",
         )
 
-        # ---- step 2: manual edit -------------------------------------------
+        # ---- manual edit ---------------------------------------------------
         _apply_scenario(page, "基线", "恢复基线")
-        _step(page, 1)
-        page.fill("#product-current-price", "96.00")
+        page.fill("#notice-current-fee", "96.00")
         page.get_by_role("button", name="保存修改").click()
         page.wait_for_timeout(1200)
         results.check(
             "manual edit reaches the site",
-            "96.00" in page.request.get(f"{site_origin}/ssr/product").text(),
+            "96.00" in page.request.get(f"{site_origin}/ssr/notice").text(),
         )
         results.check(
             "manual edit clears the scenario badge",
             page.locator(".badge-manual").count() >= 1,
         )
 
-        page.fill("#product-current-price", "1e2")
+        page.fill("#notice-current-fee", "1e2")
         page.get_by_role("button", name="保存修改").click()
         page.wait_for_selector(".field-invalid", timeout=10_000)
-        results.check("invalid price shows a field error", True)
+        results.check("invalid fee shows a field error", True)
         results.check(
             "draft preserved after failure",
-            page.input_value("#product-current-price") == "1e2",
+            page.input_value("#notice-current-fee") == "1e2",
         )
         results.check(
-            "server still serves the last good price",
-            "96.00" in page.request.get(f"{site_origin}/ssr/product").text(),
+            "server still serves the last good fee",
+            "96.00" in page.request.get(f"{site_origin}/ssr/notice").text(),
         )
         page.get_by_role("button", name="放弃修改").click()
 
-        # ---- fault injection ------------------------------------------------
-        _step(page, 1)
+        # ---- removed controls ----------------------------------------------
+        results.check(
+            "fault injection panel is gone",
+            page.get_by_text("故障注入", exact=False).count() == 0,
+        )
         results.check(
             "presentation controls are gone",
             page.locator(".option", has_text="节点被移除").count() == 0,
         )
-        page.locator(".option", has_text="500 故障").locator("input").check()
-        page.get_by_role("button", name="应用故障设置").click()
-        page.wait_for_timeout(1200)
         results.check(
-            "outage makes the site 500",
-            page.request.get(f"{site_origin}/ssr/product").status == 500,
-        )
-        results.check("admin still interactive during outage", page.locator(".step").count() == 4)
-        results.check(
-            "preview shows the failure",
-            "outage" in frame.locator("body").inner_text().lower(),
+            "list editor tab is gone",
+            page.locator(".editor-tabs").count() == 0,
         )
 
-        _step(page, 3)
-        page.get_by_role("button", name="恢复到基线").click()
+        # ---- reset ---------------------------------------------------------
+        page.get_by_role("button", name="恢复默认（reset）").click()
         page.wait_for_timeout(1500)
         results.check(
-            "recovery restores the site",
-            page.request.get(f"{site_origin}/ssr/product").status == 200,
+            "reset restores the site",
+            "128.50" in page.request.get(f"{site_origin}/ssr/notice").text(),
         )
         results.check(
             "preview recovers too",
-            frame.locator("#current-price").inner_text() == "128.50",
+            frame.locator("#current-fee").inner_text() == "128.50",
         )
 
         # ---- hygiene -------------------------------------------------------
@@ -231,15 +193,15 @@ def run(args, token: str) -> Results:
         )
         page.fill("#token", token)
         page.get_by_role("button", name="连接").click()
-        page.wait_for_selector(".steps", timeout=10_000)
+        page.wait_for_selector(".workspace", timeout=10_000)
         page.reload(wait_until="domcontentloaded")
         results.check(
             "refresh clears the session",
             page.get_by_role("heading", name="mocksite 控制台").is_visible(),
         )
 
-        # 401, 400 and 500 are produced on purpose above; anything else is a bug.
-        unexpected = console.unexpected(allowed_statuses=("401", "400", "500"))
+        # 401 and 400 are produced on purpose above; anything else is a bug.
+        unexpected = console.unexpected(allowed_statuses=("401", "400"))
         results.check("no unexpected console errors", not unexpected, unexpected)
         results.check("no uncaught JS exceptions", not console.exceptions, console.exceptions)
 

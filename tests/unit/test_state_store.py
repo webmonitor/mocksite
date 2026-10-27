@@ -20,27 +20,26 @@ def test_initial_state_is_default_with_revision_zero() -> None:
 
 def test_patch_advances_revision_once() -> None:
     store = StateStore()
-    assert store.patch({"business": {"page_size": 3}}).revision == 1
-    assert store.patch({"business": {"page_size": 4}}).revision == 2
+    assert store.patch({"business": {"notice": {"view_count": 3}}}).revision == 1
+    assert store.patch({"business": {"notice": {"view_count": 4}}}).revision == 2
 
 
 def test_invalid_patch_does_not_advance_revision() -> None:
     store = StateStore()
-    store.patch({"business": {"page_size": 3}})
+    store.patch({"business": {"notice": {"view_count": 3}}})
     with pytest.raises(StateValidationError):
-        store.patch({"business": {"page_size": 0}})
+        store.patch({"business": {"notice": {"view_count": -1}}})
     assert store.state.revision == 1
-    assert store.state.business.page_size == 3
+    assert store.state.business.notice.view_count == 3
 
 
 def test_reset_restores_defaults_and_advances_revision() -> None:
     store = StateStore()
-    store.patch({"business": {"product": {"current_price": "1.00"}}, "faults": {"kind": "outage"}})
+    store.patch({"business": {"notice": {"current_fee": "1.00"}}})
     before, after = store.reset()
     assert before.revision == 1
     assert after.revision == 2
     assert after.business == DEFAULT_STATE.business
-    assert after.faults.kind == "none"
 
 
 def test_reset_is_idempotent_in_content_but_not_revision() -> None:
@@ -59,7 +58,7 @@ def test_static_html_is_rerendered_on_every_commit() -> None:
         return f"rev={state.revision}"
 
     store = StateStore(renderer=renderer)
-    store.patch({"business": {"page_size": 3}})
+    store.patch({"business": {"notice": {"view_count": 3}}})
     state, html = store.snapshot()
     assert html == f"rev={state.revision}"
     assert rendered == [0, 1]
@@ -73,24 +72,24 @@ def test_renderer_failure_does_not_advance_state_or_page() -> None:
 
     store = StateStore(renderer=renderer)
     with pytest.raises(RuntimeError):
-        store.patch({"business": {"page_size": 3}})
+        store.patch({"business": {"notice": {"view_count": 3}}})
     assert store.state.revision == 0
     assert store.static_html == "rev=0"
 
 
 def test_failed_render_keeps_previous_page_content() -> None:
     def renderer(state: State) -> str:
-        if state.business.page_size == 4:
+        if state.business.notice.view_count == 4:
             raise RuntimeError("boom")
-        return f"page_size={state.business.page_size}"
+        return f"view_count={state.business.notice.view_count}"
 
     store = StateStore(renderer=renderer)
-    store.patch({"business": {"page_size": 3}})
+    store.patch({"business": {"notice": {"view_count": 3}}})
     with pytest.raises(RuntimeError):
-        store.patch({"business": {"page_size": 4}})
+        store.patch({"business": {"notice": {"view_count": 4}}})
     state, html = store.snapshot()
-    assert state.business.page_size == 3
-    assert html == "page_size=3"
+    assert state.business.notice.view_count == 3
+    assert html == "view_count=3"
 
 
 def test_snapshot_is_consistent_under_concurrent_writes() -> None:
@@ -105,8 +104,8 @@ def test_snapshot_is_consistent_under_concurrent_writes() -> None:
                 mismatches.append((state.revision, html))
 
     def writer() -> None:
-        for size in range(1, 60):
-            store.patch({"business": {"page_size": size % 100 + 1}})
+        for count in range(1, 60):
+            store.patch({"business": {"notice": {"view_count": count}}})
 
     reader_thread = threading.Thread(target=reader)
     reader_thread.start()
@@ -127,7 +126,7 @@ def test_concurrent_patches_never_lose_a_revision() -> None:
     def worker(index: int) -> None:
         try:
             for step in range(25):
-                store.patch({"business": {"page_size": (index * 25 + step) % 100 + 1}})
+                store.patch({"business": {"notice": {"view_count": index * 25 + step}}})
         except Exception as exc:  # noqa: BLE001 - surfaced by assertion below
             errors.append(exc)
 
@@ -145,10 +144,10 @@ def test_scenario_application_returns_before_and_after() -> None:
     from mocksite.scenarios.registry import build_default_store
 
     store = build_default_store()
-    before, after = store.apply_scenario("price_change")
+    before, after = store.apply_scenario("fee_change")
     assert before.revision == 0
     assert after.revision == 1
-    assert after.business.product.current_price == Decimal("96.00")
+    assert after.business.notice.current_fee == Decimal("96.00")
 
 
 def test_unknown_scenario_raises_and_leaves_state_alone() -> None:
@@ -164,8 +163,8 @@ def test_scenario_is_idempotent_in_content() -> None:
     from mocksite.scenarios.registry import build_default_store
 
     store = build_default_store()
-    _, first = store.apply_scenario("item_price_change")
-    _, second = store.apply_scenario("item_price_change")
+    _, first = store.apply_scenario("title_change")
+    _, second = store.apply_scenario("title_change")
     assert first.business == second.business
     assert second.revision == first.revision + 1
 
@@ -183,10 +182,11 @@ def test_scenarios_do_not_stack() -> None:
     from mocksite.scenarios.registry import build_default_store
 
     store = build_default_store()
-    store.apply_scenario("outage")
-    _, after = store.apply_scenario("price_change")
-    assert after.faults.kind == "none"
-    assert after.business.product.current_price == Decimal("96.00")
+    store.apply_scenario("title_change")
+    _, after = store.apply_scenario("fee_change")
+    # Only the latest scenario is in effect: the title is back to the default.
+    assert after.business.notice.title == DEFAULT_STATE.business.notice.title
+    assert after.business.notice.current_fee == Decimal("96.00")
 
 
 def test_empty_patch_still_advances_revision() -> None:

@@ -3,9 +3,9 @@
 Rules (README §5.2), all enforced here so the store never sees a half-valid
 payload:
 
-* objects merge recursively — ``{"business": {"product": {"name": "x"}}}``
-  leaves every other product field alone;
-* arrays replace wholesale — sending ``items`` with two rows deletes the rest;
+* objects merge recursively — ``{"business": {"notice": {"title": "x"}}}``
+  leaves every other notice field alone;
+* arrays replace wholesale — sending ``attachments`` with one item deletes the rest;
 * ``null`` is not a value and is never a delete instruction;
 * ``revision`` is read-only and rejected at any depth;
 * unknown keys and type errors reject the whole patch.
@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from mocksite.state.errors import StateValidationError
 from mocksite.state.models import State
 
-MUTABLE_SECTIONS = ("business", "faults")
+MUTABLE_SECTIONS = ("business",)
 READ_ONLY_KEYS = ("revision",)
 
 

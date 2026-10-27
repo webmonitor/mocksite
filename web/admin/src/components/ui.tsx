@@ -78,38 +78,3 @@ export function CopyButton({ value, label = '复制' }: { value: string; label?:
     </button>
   )
 }
-
-/** A step in the top workflow bar. */
-export function StepChip({
-  index,
-  title,
-  detail,
-  state,
-  onClick,
-}: {
-  index: number
-  title: string
-  detail: string
-  state: 'done' | 'current' | 'todo'
-  onClick: () => void
-}) {
-  return (
-    <button type="button" className={`step step-${state}`} onClick={onClick}>
-      <span className="step-index">{state === 'done' ? '✓' : index}</span>
-      <span className="step-text">
-        <strong>{title}</strong>
-        <small>{detail}</small>
-      </span>
-    </button>
-  )
-}
-
-/** A collapsible explanation panel — the "why" that a newcomer needs. */
-export function Explainer({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <details className="explainer">
-      <summary>{title}</summary>
-      <div className="explainer-body">{children}</div>
-    </details>
-  )
-}

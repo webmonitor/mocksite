@@ -39,8 +39,8 @@ python tests/acceptance/check_target_pages.py          # 目标页面
 | 文件 | 内容 |
 |---|---|
 | `_harness.py` | 共用基建：`Results`、绕代理的 `admin_request`、`reset_server`、`apply_scenario`、`ConsoleLog`、参数解析、退出码。**不含任何业务断言。** |
-| `check_admin_ui.py` | 管理后台：错误 token、四步流程、内嵌预览跟随、手动编辑与校验失败、故障注入与恢复、token 不落盘 |
-| `check_target_pages.py` | 目标页面：CSR 就绪标记、React/Vue 一致、分页、空列表 vs 加载失败、商品页诱饵节点与懒加载评价、数据场景下结构不变、故障不可用 |
+| `check_admin_ui.py` | 管理后台：错误 token、单页控制台（无向导、无选择器表、无 diff）、内嵌预览跟随、手动编辑与校验失败、恢复、token 不落盘 |
+| `check_target_pages.py` | 目标页面：通知页诱饵金额与三种日期渲染、脚本异步填充的点击次数、数据场景下结构不变、已删除的列表路由与资产返回 404 |
 
 ## 加新验收套件的约定
 

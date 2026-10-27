@@ -16,7 +16,7 @@ MIN_TOKEN_CHARS = 32
 DEFAULT_SITE_PORT = 9000
 DEFAULT_ADMIN_PORT = 9001
 DEFAULT_ADMIN_DIST = "web/dist"
-#: Where the target pages' vendored bundles and page scripts live.
+#: Where the target page's stylesheet, script and icons live.
 #:
 #: In the repo that is ``web/targets`` (frontend code belongs under ``web/``).
 #: The wheel force-includes those files to ``mocksite/_static``, so an installed
@@ -60,7 +60,7 @@ class Settings:
     admin_port: int
     admin_dist: Path
     log_level: str
-    #: Vendored target-page assets (``assets/`` and ``vendor/`` subdirectories).
+    #: Target-page assets (the ``shared/`` subtree).
     target_assets: Path | None = None
     #: Origin a monitoring platform should collect from (container DNS name in
     #: compose). Never assume it equals the origin a human can open.

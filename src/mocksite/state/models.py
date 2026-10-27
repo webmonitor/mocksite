@@ -1,22 +1,31 @@
 """Immutable state model for the mock site.
 
 All models are frozen and hashable-by-construction (tuples, not lists), so a
-snapshot handed to a request can never be mutated by it. Prices are ``Decimal``
-in memory and decimal *strings* on the wire: floats never appear anywhere.
+snapshot handed to a request can never be mutated by it. Money amounts are
+``Decimal`` in memory and decimal *strings* on the wire: floats never appear
+anywhere.
 
 ``revision`` is carried on :class:`State` but is never accepted as input; the
 store owns it.
 
-The business data describes a realistic product-detail page: a gallery, several
-price nodes, stock, variants, specifications and reviews. That richness is the
-point — a collector has to pick the *right* node out of a page that looks like
-a real shop, not out of an eight-element fixture.
+The business data models **one university notice** — the shape of
+``notice.xidian.edu.cn`` / ``notice.ysu.edu.cn``:
+
+* a notice detail page with 标题 / 发布单位 / 发布时间 / 点击次数 / 正文段落 /
+  附件 / 上一篇下一篇, where the same publication instant is rendered in three
+  different formats;
+* 点击次数 is rendered by the page script, not the server, exactly like the
+  portal's ``_showDynClicks``.
+
+There is no notice *list*: the site is a single notice, because that is the one
+thing the consumer (WebMonitor) monitors.
 
 Scope: this site verifies **data** changes only. The DOM structure of every page
-is fixed; scenarios swap business values (price, rows, reviews, stock) and inject
-transport faults. Structural breakage (missing nodes, renamed ids, empty cells)
-is deliberately *not* modelled — there is no presentation-control layer, so a
-page cannot be made to render a different shape for the same data.
+is fixed; scenarios swap business values. Structural breakage (missing nodes,
+renamed ids, empty cells) is deliberately *not* modelled — there is no
+presentation-control layer, so a page cannot be made to render a different shape
+for the same data. Transport faults are not modelled either: how a collector
+behaves on 500s or timeouts is its own test, not a property of the input.
 """
 
 from __future__ import annotations
@@ -35,16 +44,17 @@ from pydantic import (
 
 MAX_TEXT = 256
 MAX_LONG_TEXT = 2000
-MAX_PRICE_TEXT = 64
-MAX_ITEMS = 100
-MAX_REVIEWS = 50
-MAX_DELAY_MS = 30_000
+MAX_AMOUNT_TEXT = 64
+MAX_BODY_PARAGRAPHS = 40
 
 Currency = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
 Text = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 LongText = Annotated[str, Field(min_length=1, max_length=MAX_LONG_TEXT)]
 RowId = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 IsoDate = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+#: Portal timestamps are minute-precision and space-separated, e.g.
+#: ``2026-10-20 14:32``. Not RFC 3339: the target pages are Chinese portals.
+MinuteTime = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")]
 
 
 def _parse_decimal_string(value: Any) -> Decimal:
@@ -65,8 +75,8 @@ def _parse_decimal_string(value: Any) -> Decimal:
         raise ValueError("value must be a decimal string, not a number")  # noqa: TRY004
     if not value:
         raise ValueError("value must not be empty")
-    if len(value) > MAX_PRICE_TEXT:
-        raise ValueError(f"value must be at most {MAX_PRICE_TEXT} characters")
+    if len(value) > MAX_AMOUNT_TEXT:
+        raise ValueError(f"value must be at most {MAX_AMOUNT_TEXT} characters")
     body = value.removeprefix("+")
     whole, dot, fraction = body.partition(".")
     if not whole.isdigit() or (dot and (not fraction or not fraction.isdigit())):
@@ -82,266 +92,138 @@ def _parse_decimal_string(value: Any) -> Decimal:
     return parsed
 
 
-def _parse_rating(value: Any) -> Decimal:
-    parsed = _parse_decimal_string(value)
-    if parsed > 5:
-        raise ValueError("rating must be at most 5")
-    return parsed
-
-
-Price = Annotated[
+Amount = Annotated[
     Decimal,
     BeforeValidator(_parse_decimal_string),
     PlainSerializer(lambda value: str(value), return_type=str),
 ]
 
-Rating = Annotated[
-    Decimal,
-    BeforeValidator(_parse_rating),
-    PlainSerializer(lambda value: str(value), return_type=str),
-]
-
-FaultKind = Literal["none", "outage"]
-
-#: Stock states a real shop exposes; ``out_of_stock`` still renders the page.
-StockStatus = Literal["in_stock", "low_stock", "out_of_stock", "preorder"]
-VariantKind = Literal["color", "size"]
+#: Lifecycle a real portal exposes; ``withdrawn`` still renders the page so a
+#: collector can see the 撤回 banner instead of a 404.
+NoticeStatus = Literal["published", "withdrawn"]
+AttachmentKind = Literal["pdf", "doc", "xls", "zip"]
 
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class Image(_Frozen):
-    """One gallery entry. ``src`` is a site-relative asset path, never a CDN."""
+class Attachment(_Frozen):
+    """One downloadable attachment. ``src`` is site-relative, never a CDN."""
 
     id: RowId
-    alt: Text
+    name: Text
     src: Text
-    color: RowId
+    kind: AttachmentKind = "pdf"
+    size_text: Text = "1.2 MB"
 
 
-class Variant(_Frozen):
+class Notice(_Frozen):
+    """The notice detail page."""
+
     id: RowId
-    label: Text
-    kind: VariantKind
-    available: bool = True
-
-
-class Spec(_Frozen):
-    label: Text
-    value: Text
-
-
-class Review(_Frozen):
-    id: RowId
-    author: Text
-    rating: Annotated[StrictInt, Field(ge=1, le=5)]
-    date: IsoDate
     title: Text
-    body: LongText
-    verified: bool = True
-
-
-class Product(_Frozen):
-    id: RowId
-    name: Text
-    brand: Text
-    sku: Text
-    current_price: Price
-    original_price: Price
+    department: Text
+    doc_no: Text
+    category: Text
+    current_fee: Amount
+    previous_fee: Amount
     currency: Currency
-    rating: Rating = Decimal("4.6")
-    review_count: Annotated[StrictInt, Field(ge=0, le=100_000)] = 128
-    stock_status: StockStatus = "in_stock"
-    stock_count: Annotated[StrictInt, Field(ge=0, le=10_000)] = 42
-    description: LongText = "A fixture product."
-    highlights: Annotated[tuple[Text, ...], Field(max_length=20)] = ()
-    images: Annotated[tuple[Image, ...], Field(max_length=20)] = ()
-    variants: Annotated[tuple[Variant, ...], Field(max_length=40)] = ()
-    specs: Annotated[tuple[Spec, ...], Field(max_length=40)] = ()
-
-
-class Item(_Frozen):
-    id: RowId
-    name: Text
-    price: Price
+    #: The single source of truth for the publication instant. Every rendered
+    #: date is derived from it, so the three formats can never disagree.
+    published_at: MinuteTime
+    effective_date: IsoDate
+    #: Rendered by the page script, like the portal's dynamic click counter.
+    view_count: Annotated[StrictInt, Field(ge=0, le=10_000_000)] = 0
+    status: NoticeStatus = "published"
+    body: Annotated[tuple[LongText, ...], Field(max_length=MAX_BODY_PARAGRAPHS)] = ()
+    attachments: Annotated[tuple[Attachment, ...], Field(max_length=20)] = ()
+    #: Navigation titles look like content in a naive whole-page diff.
+    prev_title: Text = ""
+    next_title: Text = ""
 
 
 class BusinessData(_Frozen):
     """The only thing a collection run should observe as content."""
 
-    product: Product
-    items: Annotated[tuple[Item, ...], Field(max_length=MAX_ITEMS)] = ()
-    page_size: Annotated[StrictInt, Field(ge=1, le=100)] = 2
-    reviews: Annotated[tuple[Review, ...], Field(max_length=MAX_REVIEWS)] = ()
-    review_page_size: Annotated[StrictInt, Field(ge=1, le=50)] = 2
-
-    @property
-    def page_count(self) -> int:
-        """Derived, never stored: a stored total could contradict ``items``."""
-        return -(-len(self.items) // self.page_size)
-
-    @property
-    def review_page_count(self) -> int:
-        return -(-len(self.reviews) // self.review_page_size)
-
-
-class Faults(_Frozen):
-    """Injected behaviour for site routes only; admin and ``/health`` ignore it.
-
-    Both fields may be set at once (PATCH combines conditions); consumers must
-    treat ``kind="outage"`` as taking precedence over ``delay_ms`` so a failure
-    is never silently masked by a delay.
-    """
-
-    kind: FaultKind = "none"
-    delay_ms: Annotated[StrictInt, Field(ge=0, le=MAX_DELAY_MS)] = 0
+    notice: Notice
 
 
 class State(_Frozen):
     revision: Annotated[StrictInt, Field(ge=0)] = 0
     business: BusinessData
-    faults: Faults = Faults()
 
 
-DEFAULT_PRODUCT = Product(
-    id="coffee",
-    name="Fixture Coffee Roaster — Ethiopia Guji 1kg",
-    brand="Fixture Roasters",
-    sku="FX-COF-GUJI-1KG",
-    current_price=Decimal("128.50"),
-    original_price=Decimal("199.00"),
-    currency="USD",
-    rating=Decimal("4.6"),
-    review_count=128,
-    stock_status="in_stock",
-    stock_count=42,
-    description=(
-        "A washed Ethiopian single origin from the Guji zone, roasted for filter. "
-        "Bright citrus acidity, jasmine aroma and a long honeyed finish. Roasted to "
-        "order and shipped within 48 hours."
-    ),
-    highlights=(
-        "Single origin, washed process, Guji zone",
-        "Roasted to order — ships within 48 hours",
-        "1 kg whole bean, also available ground",
-        "Free shipping on orders over 50.00",
-    ),
-    images=(
-        Image(
-            id="img-1",
-            alt="Bag of Guji coffee, front",
-            src="/static/shared/img/coffee-natural.svg",
-            color="natural",
+DEFAULT_NOTICE = Notice(
+    id="notice-54493",
+    title="关于调整校园停车收费标准的通知",
+    department="后勤保障部",
+    doc_no="校后保〔2026〕42 号",
+    category="学校通知",
+    current_fee=Decimal("128.50"),
+    previous_fee=Decimal("199.00"),
+    currency="CNY",
+    published_at="2026-10-20 14:32",
+    effective_date="2026-11-01",
+    view_count=128,
+    status="published",
+    body=(
+        (
+            "为缓解校园停车压力、规范停车秩序，经2026年第12次校长办公会研究通过，"
+            "决定调整校园停车收费标准。现将有关事项通知如下。"
         ),
-        Image(
-            id="img-2",
-            alt="Bag of Guji coffee, back",
-            src="/static/shared/img/coffee-natural-back.svg",
-            color="natural",
+        (
+            "一、调整范围。本次调整适用于长安、雁塔两校区的道路泊位与校内公共停车场，"
+            "教工住宅区自有车位不在此次调整范围内。"
         ),
-        Image(
-            id="img-3",
-            alt="Guji coffee in a black bag",
-            src="/static/shared/img/coffee-black.svg",
-            color="black",
+        (
+            "二、收费标准。小型车首小时由 199.00 元调整为 128.50 元，首小时后每30分钟"
+            "加收 32.12 元；单日累计不超过 12.85 元。中型车、大型车按车型系数另行计收。"
         ),
-        Image(
-            id="img-4",
-            alt="Guji coffee in a red bag",
-            src="/static/shared/img/coffee-red.svg",
-            color="red",
+        "三、执行时间。本通知自 2026 年 11 月 1 日起执行，执行前按原标准计收。",
+        (
+            "四、其他事项。军车、警车、消防车、救护车等特种车辆按规定免费停放；"
+            "新能源汽车继续执行半价优惠。"
+        ),
+        (
+            "请各单位做好宣传解释工作。如有疑问，请联系后勤保障部交通管理科，"
+            "电话：029-81891818。"
         ),
     ),
-    variants=(
-        Variant(id="color-natural", label="Natural kraft", kind="color"),
-        Variant(id="color-black", label="Matte black", kind="color"),
-        Variant(id="color-red", label="Chili red", kind="color"),
-        Variant(id="size-250", label="250 g", kind="size"),
-        Variant(id="size-500", label="500 g", kind="size"),
-        Variant(id="size-1kg", label="1 kg", kind="size"),
-        Variant(id="size-2kg", label="2 kg", kind="size", available=False),
+    attachments=(
+        Attachment(
+            id="att-1",
+            name="校园停车收费标准调整表.pdf",
+            src="/static/shared/img/attachment-pdf.svg",
+            kind="pdf",
+            size_text="184 KB",
+        ),
+        Attachment(
+            id="att-2",
+            name="2026年第12次校长办公会纪要.pdf",
+            src="/static/shared/img/attachment-pdf.svg",
+            kind="pdf",
+            size_text="312 KB",
+        ),
+        Attachment(
+            id="att-3",
+            name="停车收费标准公示回执.doc",
+            src="/static/shared/img/attachment-doc.svg",
+            kind="doc",
+            size_text="96 KB",
+        ),
+        Attachment(
+            id="att-4",
+            name="意见征集汇总表.xls",
+            src="/static/shared/img/attachment-xls.svg",
+            kind="xls",
+            size_text="72 KB",
+        ),
     ),
-    specs=(
-        Spec(label="Origin", value="Ethiopia, Guji zone"),
-        Spec(label="Process", value="Washed"),
-        Spec(label="Variety", value="Heirloom"),
-        Spec(label="Roast level", value="Medium-light"),
-        Spec(label="Net weight", value="1 kg"),
-        Spec(label="Packaging", value="Recyclable kraft bag with valve"),
-        Spec(label="Best before", value="12 months from roast date"),
-    ),
+    prev_title="关于CURA中国大学生路跑联赛期间临时交通管制的通知",
+    next_title="关于举办第二届“百班千人国防尖兵挑战赛”的通知",
 )
 
-DEFAULT_REVIEWS = (
-    Review(
-        id="rev-1",
-        author="Dana R.",
-        rating=5,
-        date="2026-09-14",
-        title="Exactly the jasmine note I wanted",
-        body=(
-            "Brewed as V60 at 1:16. The jasmine aroma is unmistakable and the finish "
-            "stays sweet. Second bag I order."
-        ),
-    ),
-    Review(
-        id="rev-2",
-        author="Miguel S.",
-        rating=4,
-        date="2026-09-02",
-        title="Great but needs a rest",
-        body=(
-            "First cups were a little muted; after a week of resting it opened up "
-            "nicely. Packaging keeps it fresh."
-        ),
-    ),
-    Review(
-        id="rev-3",
-        author="Aiko T.",
-        rating=5,
-        date="2026-08-21",
-        title="Consistent roast",
-        body=(
-            "Third order in a row and the roast level has not drifted. Grind size is "
-            "consistent for pour over."
-        ),
-    ),
-    Review(
-        id="rev-4",
-        author="Peter N.",
-        rating=3,
-        date="2026-08-05",
-        title="Good, not exceptional",
-        body=(
-            "Solid daily coffee. I expected more fruit for a Guji, but it is clean and "
-            "easy to brew."
-        ),
-    ),
-    Review(
-        id="rev-5",
-        author="Lena K.",
-        rating=5,
-        date="2026-07-30",
-        title="Fast shipping",
-        body=(
-            "Ordered Monday, roasted Tuesday, arrived Thursday. The valve bag smells "
-            "fantastic when opened."
-        ),
-    ),
-)
-
-DEFAULT_BUSINESS = BusinessData(
-    product=DEFAULT_PRODUCT,
-    items=(
-        Item(id="A", name="Alpha", price=Decimal("10.00")),
-        Item(id="B", name="Beta", price=Decimal("20.00")),
-        Item(id="C", name="Gamma", price=Decimal("30.00")),
-    ),
-    page_size=2,
-    reviews=DEFAULT_REVIEWS,
-    review_page_size=2,
-)
+DEFAULT_BUSINESS = BusinessData(notice=DEFAULT_NOTICE)
 
 DEFAULT_STATE = State(business=DEFAULT_BUSINESS)

@@ -1,55 +1,60 @@
 /**
- * Product / list / review editor.
+ * Notice editor.
  *
- * Prices are edited and submitted as strings: parsing them into JS numbers
+ * Amounts are edited and submitted as strings: parsing them into JS numbers
  * would silently round `128.50` and the server would reject the result anyway.
  * Drafts survive a failed submit; only a confirmed response clears them.
- *
- * The editor is tabbed because the product now has a lot of fields; showing
- * every field at once was a large part of why the old UI was hard to read.
  */
 
 import { useEffect, useMemo, useState } from 'react'
 
 import { Field, Notice } from '@/components/ui'
-import { ApiError, type BusinessData, type Item, type Review } from '@/lib/api'
-
-type Tab = 'product' | 'items' | 'reviews'
+import { ApiError, type BusinessData } from '@/lib/api'
 
 interface Draft {
-  productId: string
-  name: string
-  brand: string
-  sku: string
-  currentPrice: string
-  originalPrice: string
+  noticeId: string
+  title: string
+  department: string
+  docNo: string
+  category: string
+  currentFee: string
+  previousFee: string
   currency: string
-  rating: string
-  stockStatus: string
-  stockCount: string
-  description: string
-  pageSize: string
-  items: Item[]
-  reviews: Review[]
+  publishedAt: string
+  effectiveDate: string
+  viewCount: string
+  status: string
+  bodyText: string
+  prevTitle: string
+  nextTitle: string
 }
 
 function toDraft(business: BusinessData): Draft {
   return {
-    productId: business.product.id,
-    name: business.product.name,
-    brand: business.product.brand,
-    sku: business.product.sku,
-    currentPrice: business.product.current_price,
-    originalPrice: business.product.original_price,
-    currency: business.product.currency,
-    rating: business.product.rating,
-    stockStatus: business.product.stock_status,
-    stockCount: String(business.product.stock_count),
-    description: business.product.description,
-    pageSize: String(business.page_size),
-    items: business.items.map((item) => ({ ...item })),
-    reviews: business.reviews.map((review) => ({ ...review })),
+    noticeId: business.notice.id,
+    title: business.notice.title,
+    department: business.notice.department,
+    docNo: business.notice.doc_no,
+    category: business.notice.category,
+    currentFee: business.notice.current_fee,
+    previousFee: business.notice.previous_fee,
+    currency: business.notice.currency,
+    publishedAt: business.notice.published_at,
+    effectiveDate: business.notice.effective_date,
+    viewCount: String(business.notice.view_count),
+    status: business.notice.status,
+    bodyText: business.notice.body.join('\n'),
+    prevTitle: business.notice.prev_title,
+    nextTitle: business.notice.next_title,
   }
+}
+
+/** One paragraph per line: an empty line would violate the min-length rule. */
+function toBody(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
 }
 
 export function BusinessEditor({
@@ -61,7 +66,6 @@ export function BusinessEditor({
   onSave: (patch: unknown) => Promise<void>
   onDirtyChange?: (dirty: boolean) => void
 }) {
-  const [tab, setTab] = useState<Tab>('product')
   const [draft, setDraft] = useState<Draft>(() => toDraft(business))
   const [errors, setErrors] = useState<Map<string, string>>(new Map())
   const [message, setMessage] = useState<{ kind: 'ok' | 'error' | 'info'; text: string } | null>(
@@ -86,47 +90,31 @@ export function BusinessEditor({
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }))
 
-  const updateItem = (index: number, field: keyof Item, value: string) => {
-    setDraft((current) => ({
-      ...current,
-      items: current.items.map((item, at) => (at === index ? { ...item, [field]: value } : item)),
-    }))
-  }
-
-  const updateReview = (index: number, field: keyof Review, value: string | number) => {
-    setDraft((current) => ({
-      ...current,
-      reviews: current.reviews.map((review, at) =>
-        at === index ? { ...review, [field]: value } : review,
-      ),
-    }))
-  }
-
   const submit = async () => {
     setSaving(true)
     setErrors(new Map())
     setMessage(null)
-    const pageSize = Number(draft.pageSize)
-    const stockCount = Number(draft.stockCount)
+    const viewCount = Number(draft.viewCount)
     try {
       await onSave({
         business: {
-          product: {
-            id: draft.productId,
-            name: draft.name,
-            brand: draft.brand,
-            sku: draft.sku,
-            current_price: draft.currentPrice,
-            original_price: draft.originalPrice,
+          notice: {
+            id: draft.noticeId,
+            title: draft.title,
+            department: draft.department,
+            doc_no: draft.docNo,
+            category: draft.category,
+            current_fee: draft.currentFee,
+            previous_fee: draft.previousFee,
             currency: draft.currency,
-            rating: draft.rating,
-            stock_status: draft.stockStatus,
-            stock_count: Number.isFinite(stockCount) ? stockCount : draft.stockCount,
-            description: draft.description,
+            published_at: draft.publishedAt,
+            effective_date: draft.effectiveDate,
+            view_count: Number.isFinite(viewCount) ? viewCount : draft.viewCount,
+            status: draft.status,
+            body: toBody(draft.bodyText),
+            prev_title: draft.prevTitle,
+            next_title: draft.nextTitle,
           },
-          items: draft.items,
-          reviews: draft.reviews,
-          page_size: Number.isFinite(pageSize) ? pageSize : draft.pageSize,
         },
       })
       setMessage({ kind: 'ok', text: '已保存，右侧预览已更新。' })
@@ -144,313 +132,171 @@ export function BusinessEditor({
 
   return (
     <div className="editor">
-      <div className="editor-tabs" role="tablist" aria-label="编辑内容">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'product'}
-          className={tab === 'product' ? 'tab tab-active' : 'tab'}
-          onClick={() => setTab('product')}
+      <div className="grid">
+        <Field label="通知 ID" htmlFor="notice-id" error={errors.get('business.notice.id')}>
+          <input
+            id="notice-id"
+            value={draft.noticeId}
+            onChange={(e) => set('noticeId', e.target.value)}
+          />
+        </Field>
+        <Field label="标题" htmlFor="notice-title" error={errors.get('business.notice.title')}>
+          <input
+            id="notice-title"
+            value={draft.title}
+            onChange={(e) => set('title', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="发布单位"
+          htmlFor="notice-department"
+          error={errors.get('business.notice.department')}
         >
-          商品字段
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'items'}
-          className={tab === 'items' ? 'tab tab-active' : 'tab'}
-          onClick={() => setTab('items')}
+          <input
+            id="notice-department"
+            value={draft.department}
+            onChange={(e) => set('department', e.target.value)}
+          />
+        </Field>
+        <Field label="文号" htmlFor="notice-doc-no" error={errors.get('business.notice.doc_no')}>
+          <input
+            id="notice-doc-no"
+            value={draft.docNo}
+            onChange={(e) => set('docNo', e.target.value)}
+          />
+        </Field>
+        <Field label="分类" htmlFor="notice-category" error={errors.get('business.notice.category')}>
+          <input
+            id="notice-category"
+            value={draft.category}
+            onChange={(e) => set('category', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="现行标准（十进制字符串）"
+          htmlFor="notice-current-fee"
+          error={errors.get('business.notice.current_fee')}
+          hint="例如 128.50；不接受浮点、指数或负数"
         >
-          列表行 ({draft.items.length})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'reviews'}
-          className={tab === 'reviews' ? 'tab tab-active' : 'tab'}
-          onClick={() => setTab('reviews')}
+          <input
+            id="notice-current-fee"
+            inputMode="decimal"
+            value={draft.currentFee}
+            onChange={(e) => set('currentFee', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="原标准"
+          htmlFor="notice-previous-fee"
+          error={errors.get('business.notice.previous_fee')}
         >
-          评价 ({draft.reviews.length})
-        </button>
+          <input
+            id="notice-previous-fee"
+            inputMode="decimal"
+            value={draft.previousFee}
+            onChange={(e) => set('previousFee', e.target.value)}
+          />
+        </Field>
+        <Field label="币种" htmlFor="notice-currency" error={errors.get('business.notice.currency')}>
+          <input
+            id="notice-currency"
+            value={draft.currency}
+            maxLength={3}
+            onChange={(e) => set('currency', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="发布时间"
+          htmlFor="notice-published-at"
+          error={errors.get('business.notice.published_at')}
+          hint="YYYY-MM-DD HH:MM；页面上的三种日期都由它派生"
+        >
+          <input
+            id="notice-published-at"
+            value={draft.publishedAt}
+            onChange={(e) => set('publishedAt', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="执行日期"
+          htmlFor="notice-effective-date"
+          error={errors.get('business.notice.effective_date')}
+          hint="YYYY-MM-DD"
+        >
+          <input
+            id="notice-effective-date"
+            value={draft.effectiveDate}
+            onChange={(e) => set('effectiveDate', e.target.value)}
+          />
+        </Field>
+        <Field label="状态" htmlFor="notice-status" error={errors.get('business.notice.status')}>
+          <select
+            id="notice-status"
+            value={draft.status}
+            onChange={(e) => set('status', e.target.value)}
+          >
+            <option value="published">published（已发布）</option>
+            <option value="withdrawn">withdrawn（已撤回）</option>
+          </select>
+        </Field>
+        <Field
+          label="点击次数"
+          htmlFor="notice-view-count"
+          error={errors.get('business.notice.view_count')}
+          hint="页面由脚本异步填充，静态 HTML 里为空"
+        >
+          <input
+            id="notice-view-count"
+            inputMode="numeric"
+            value={draft.viewCount}
+            onChange={(e) => set('viewCount', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="上一篇标题"
+          htmlFor="notice-prev-title"
+          error={errors.get('business.notice.prev_title')}
+          hint="页面导航，不是本页内容；整页文本比对会误判"
+        >
+          <input
+            id="notice-prev-title"
+            value={draft.prevTitle}
+            onChange={(e) => set('prevTitle', e.target.value)}
+          />
+        </Field>
+        <Field
+          label="下一篇标题"
+          htmlFor="notice-next-title"
+          error={errors.get('business.notice.next_title')}
+        >
+          <input
+            id="notice-next-title"
+            value={draft.nextTitle}
+            onChange={(e) => set('nextTitle', e.target.value)}
+          />
+        </Field>
       </div>
 
-      {tab === 'product' ? (
-        <>
-          <div className="grid">
-            <Field label="商品 ID" htmlFor="product-id" error={errors.get('business.product.id')}>
-              <input
-                id="product-id"
-                value={draft.productId}
-                onChange={(e) => set('productId', e.target.value)}
-              />
-            </Field>
-            <Field
-              label="商品名称"
-              htmlFor="product-name"
-              error={errors.get('business.product.name')}
-            >
-              <input
-                id="product-name"
-                value={draft.name}
-                onChange={(e) => set('name', e.target.value)}
-              />
-            </Field>
-            <Field label="品牌" htmlFor="product-brand" error={errors.get('business.product.brand')}>
-              <input
-                id="product-brand"
-                value={draft.brand}
-                onChange={(e) => set('brand', e.target.value)}
-              />
-            </Field>
-            <Field label="SKU" htmlFor="product-sku" error={errors.get('business.product.sku')}>
-              <input
-                id="product-sku"
-                value={draft.sku}
-                onChange={(e) => set('sku', e.target.value)}
-              />
-            </Field>
-            <Field
-              label="现价（十进制字符串）"
-              htmlFor="product-current-price"
-              error={errors.get('business.product.current_price')}
-              hint="例如 128.50；不接受浮点、指数或负数"
-            >
-              <input
-                id="product-current-price"
-                inputMode="decimal"
-                value={draft.currentPrice}
-                onChange={(e) => set('currentPrice', e.target.value)}
-              />
-            </Field>
-            <Field
-              label="原价"
-              htmlFor="product-original-price"
-              error={errors.get('business.product.original_price')}
-            >
-              <input
-                id="product-original-price"
-                inputMode="decimal"
-                value={draft.originalPrice}
-                onChange={(e) => set('originalPrice', e.target.value)}
-              />
-            </Field>
-            <Field label="币种" htmlFor="product-currency" error={errors.get('business.product.currency')}>
-              <input
-                id="product-currency"
-                value={draft.currency}
-                maxLength={3}
-                onChange={(e) => set('currency', e.target.value)}
-              />
-            </Field>
-            <Field
-              label="评分（0–5）"
-              htmlFor="product-rating"
-              error={errors.get('business.product.rating')}
-              hint="十进制字符串，如 4.6"
-            >
-              <input
-                id="product-rating"
-                inputMode="decimal"
-                value={draft.rating}
-                onChange={(e) => set('rating', e.target.value)}
-              />
-            </Field>
-            <Field label="库存状态" htmlFor="product-stock-status">
-              <select
-                id="product-stock-status"
-                value={draft.stockStatus}
-                onChange={(e) => set('stockStatus', e.target.value)}
-              >
-                <option value="in_stock">in_stock（有货）</option>
-                <option value="low_stock">low_stock（库存紧张）</option>
-                <option value="out_of_stock">out_of_stock（缺货）</option>
-                <option value="preorder">preorder（预售）</option>
-              </select>
-            </Field>
-            <Field
-              label="库存数量"
-              htmlFor="product-stock-count"
-              error={errors.get('business.product.stock_count')}
-            >
-              <input
-                id="product-stock-count"
-                inputMode="numeric"
-                value={draft.stockCount}
-                onChange={(e) => set('stockCount', e.target.value)}
-              />
-            </Field>
-            <Field label="页大小" htmlFor="page-size" error={errors.get('business.page_size')} hint="1–100">
-              <input
-                id="page-size"
-                inputMode="numeric"
-                value={draft.pageSize}
-                onChange={(e) => set('pageSize', e.target.value)}
-              />
-            </Field>
-          </div>
-
-          <Field
-            label="商品描述"
-            htmlFor="product-description"
-            error={errors.get('business.product.description')}
-          >
-            <textarea
-              id="product-description"
-              rows={4}
-              value={draft.description}
-              onChange={(e) => set('description', e.target.value)}
-            />
-          </Field>
-        </>
-      ) : null}
-
-      {tab === 'items' ? (
-        <>
-          <table className="rows">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>名称</th>
-                <th>价格</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {draft.items.map((item, index) => (
-                <tr key={`${item.id}-${index}`}>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 行 ID`}
-                      value={item.id}
-                      onChange={(e) => updateItem(index, 'id', e.target.value)}
-                    />
-                    {errors.get(`business.items.${index}.id`) ? (
-                      <span className="error">{errors.get(`business.items.${index}.id`)}</span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 行名称`}
-                      value={item.name}
-                      onChange={(e) => updateItem(index, 'name', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 行价格`}
-                      inputMode="decimal"
-                      value={item.price}
-                      onChange={(e) => updateItem(index, 'price', e.target.value)}
-                    />
-                    {errors.get(`business.items.${index}.price`) ? (
-                      <span className="error">{errors.get(`business.items.${index}.price}`)}</span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          items: current.items.filter((_, at) => at !== index),
-                        }))
-                      }
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  items: [...current.items, { id: '', name: '', price: '0.00' }],
-                }))
-              }
-            >
-              添加行
-            </button>
-          </div>
-        </>
-      ) : null}
-
-      {tab === 'reviews' ? (
-        <>
-          <p className="hint">
-            评价在页面上是浏览器端分页加载的：先渲染骨架屏，取到数据后才设置
-            <code>#reviews[data-ready="true"]</code>。这里编辑的是数据源，不是 DOM。
-          </p>
-          <table className="rows">
-            <thead>
-              <tr>
-                <th>作者</th>
-                <th>评分</th>
-                <th>日期</th>
-                <th>标题</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {draft.reviews.map((review, index) => (
-                <tr key={`${review.id}-${index}`}>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 条评价作者`}
-                      value={review.author}
-                      onChange={(e) => updateReview(index, 'author', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 条评价评分`}
-                      inputMode="numeric"
-                      value={String(review.rating)}
-                      onChange={(e) => updateReview(index, 'rating', Number(e.target.value))}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 条评价日期`}
-                      value={review.date}
-                      onChange={(e) => updateReview(index, 'date', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`第 ${index + 1} 条评价标题`}
-                      value={review.title}
-                      onChange={(e) => updateReview(index, 'title', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          reviews: current.reviews.filter((_, at) => at !== index),
-                        }))
-                      }
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      ) : null}
+      <Field
+        label="正文（每行一段）"
+        htmlFor="notice-body"
+        error={errors.get('business.notice.body')}
+      >
+        <textarea
+          id="notice-body"
+          rows={8}
+          value={draft.bodyText}
+          onChange={(e) => set('bodyText', e.target.value)}
+        />
+      </Field>
 
       <div className="actions sticky-actions">
-        <button type="button" className="primary" onClick={() => void submit()} disabled={saving || !dirty}>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => void submit()}
+          disabled={saving || !dirty}
+        >
           {saving ? '保存中…' : '保存修改'}
         </button>
         <button type="button" onClick={() => setDraft(toDraft(business))} disabled={saving || !dirty}>

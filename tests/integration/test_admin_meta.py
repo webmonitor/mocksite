@@ -17,14 +17,18 @@ async def test_meta_lists_pages_with_both_origins(stack: Stack) -> None:
     payload = (await stack.admin.get("/_admin/meta", headers=AUTH)).json()
     assert payload["site_origin"] != payload["site_public_origin"]
     paths = {page["path"] for page in payload["pages"]}
-    assert {"/static/product", "/ssr/product", "/api/data", "/health"} <= paths
+    assert paths == {"/static/notice", "/ssr/notice", "/api/views", "/health"}
 
-    product = next(page for page in payload["pages"] if page["path"] == "/static/product")
-    assert product["implemented"] is True
-    assert product["collect_url"].endswith("/static/product")
-    assert product["preview_url"].startswith("http://127.0.0.1")
-    assert product["selectors"][0]["css"] == "#product #current-price"
-    assert product["selectors"][0]["xpath"].startswith('//*[@id="product"]')
+    notice = next(page for page in payload["pages"] if page["path"] == "/static/notice")
+    assert notice["implemented"] is True
+    assert notice["collect_url"].endswith("/static/notice")
+    assert notice["preview_url"].startswith("http://127.0.0.1")
+    assert notice["selectors"][0]["css"] == "#notice #current-fee"
+    assert notice["selectors"][0]["xpath"].startswith('//*[@id="notice"]')
+
+    # Decoy selectors are advertised with their role so a client can warn.
+    roles = {selector["role"] for selector in notice["selectors"]}
+    assert roles == {"primary", "ready", "supporting", "decoy"}, roles
 
 
 async def test_meta_marks_every_page_as_implemented(stack: Stack) -> None:
@@ -40,10 +44,19 @@ async def test_meta_is_not_cacheable(stack: Stack) -> None:
 
 
 async def test_page_catalogue_matches_rendered_dom(stack: Stack) -> None:
-    """Every selector advertised for a product page must actually match."""
+    """Every selector advertised for the notice page must actually match."""
     payload = (await stack.admin.get("/_admin/meta", headers=AUTH)).json()
-    product = next(page for page in payload["pages"] if page["path"] == "/ssr/product")
-    body = (await stack.site.get("/ssr/product")).text
-    assert product["selectors"], "product page must advertise at least one selector"
-    assert 'id="product"' in body
-    assert 'id="current-price"' in body
+    notice = next(page for page in payload["pages"] if page["path"] == "/ssr/notice")
+    body = (await stack.site.get("/ssr/notice")).text
+    assert notice["selectors"], "notice page must advertise at least one selector"
+    assert 'id="notice"' in body
+    assert 'id="current-fee"' in body
+    # Every advertised selector must address a node the page really renders.
+    # A `#id[...]` form is a readiness marker: the id exists in the static HTML,
+    # the attribute is only set by the page script, so match the id alone.
+    for selector in notice["selectors"]:
+        css = selector["css"]
+        if " " in css or not css.startswith("#"):
+            continue
+        node_id = css[1:].split("[", 1)[0]
+        assert f'id="{node_id}"' in body, css

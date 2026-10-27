@@ -8,7 +8,7 @@ import logging
 import httpx
 import pytest
 
-from mocksite.state.models import DEFAULT_PRODUCT
+from mocksite.state.models import DEFAULT_NOTICE
 from tests.integration.harness import AUTH, TOKEN, Stack
 
 pytestmark = pytest.mark.asyncio
@@ -47,31 +47,30 @@ async def test_token_is_accepted_verbatim(stack: Stack) -> None:
 
 async def test_state_document_shape(stack: Stack) -> None:
     payload = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
-    assert set(payload) == {"revision", "business", "faults"}
+    assert set(payload) == {"revision", "business"}
     assert payload["revision"] == 0
-    assert payload["business"]["product"]["current_price"] == "128.50"
-    assert payload["business"]["page_size"] == 2
-    assert payload["faults"] == {"kind": "none", "delay_ms": 0}
+    assert payload["business"]["notice"]["current_fee"] == "128.50"
+    assert set(payload["business"]) == {"notice"}
 
 
 async def test_patch_returns_full_state_and_bumps_revision(stack: Stack) -> None:
     response = await stack.admin.patch(
-        "/_admin/state", json={"business": {"product": {"name": "Demo"}}}, headers=AUTH
+        "/_admin/state", json={"business": {"notice": {"title": "演示公告"}}}, headers=AUTH
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["revision"] == 1
-    assert payload["business"]["product"]["name"] == "Demo"
-    assert payload["business"]["product"]["current_price"] == "128.50"
+    assert payload["business"]["notice"]["title"] == "演示公告"
+    assert payload["business"]["notice"]["current_fee"] == "128.50"
 
 
 async def test_patch_rejects_null_with_location(stack: Stack) -> None:
     response = await stack.admin.patch(
-        "/_admin/state", json={"business": {"product": {"name": None}}}, headers=AUTH
+        "/_admin/state", json={"business": {"notice": {"title": None}}}, headers=AUTH
     )
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_state"
-    assert response.json()["errors"][0]["loc"] == "business.product.name"
+    assert response.json()["errors"][0]["loc"] == "business.notice.title"
 
 
 async def test_patch_rejects_unknown_keys(stack: Stack) -> None:
@@ -87,17 +86,19 @@ async def test_patch_rejects_revision(stack: Stack) -> None:
 
 
 async def test_invalid_patch_leaves_state_untouched(stack: Stack) -> None:
-    await stack.admin.patch("/_admin/state", json={"business": {"page_size": 3}}, headers=AUTH)
+    await stack.admin.patch(
+        "/_admin/state", json={"business": {"notice": {"view_count": 7}}}, headers=AUTH
+    )
     response = await stack.admin.patch(
         "/_admin/state",
-        json={"business": {"product": {"name": "kept?"}, "page_size": 0}},
+        json={"business": {"notice": {"title": "kept?", "view_count": -1}}},
         headers=AUTH,
     )
     assert response.status_code == 400
     current = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     assert current["revision"] == 1
-    assert current["business"]["page_size"] == 3
-    assert current["business"]["product"]["name"] == DEFAULT_PRODUCT.name
+    assert current["business"]["notice"]["view_count"] == 7
+    assert current["business"]["notice"]["title"] == DEFAULT_NOTICE.title
 
 
 async def test_patch_requires_json_media_type(stack: Stack) -> None:
@@ -129,7 +130,7 @@ async def test_oversized_body_rejected(stack: Stack) -> None:
     padding = "x" * (MAX_BODY + 100)
     response = await stack.admin.patch(
         "/_admin/state",
-        content=json.dumps({"business": {"product": {"name": padding}}}).encode(),
+        content=json.dumps({"business": {"notice": {"title": padding}}}).encode(),
         headers={**AUTH, "Content-Type": "application/json"},
     )
     assert response.status_code == 413
@@ -137,7 +138,7 @@ async def test_oversized_body_rejected(stack: Stack) -> None:
 
 async def test_body_below_limit_is_accepted(stack: Stack) -> None:
     """A payload well under the cap must pass, so the limit is not off by a factor."""
-    payload = json.dumps({"business": {"product": {"name": "n" * 200}}}).encode()
+    payload = json.dumps({"business": {"notice": {"title": "n" * 200}}}).encode()
     response = await stack.admin.patch(
         "/_admin/state", content=payload, headers={**AUTH, "Content-Type": "application/json"}
     )
@@ -145,16 +146,16 @@ async def test_body_below_limit_is_accepted(stack: Stack) -> None:
 
 
 async def test_reset_returns_before_and_after(stack: Stack) -> None:
-    await stack.admin.patch("/_admin/state", json={"faults": {"kind": "outage"}}, headers=AUTH)
+    await stack.admin.patch(
+        "/_admin/state", json={"business": {"notice": {"current_fee": "1.00"}}}, headers=AUTH
+    )
     response = await stack.admin.post("/_admin/reset", headers=AUTH)
     assert response.status_code == 200
     payload = response.json()
     assert payload["before"]["revision"] == 1
     assert payload["after"]["revision"] == 2
-    assert payload["after"]["faults"]["kind"] == "none"
-    assert payload["after"]["business"] == payload["before"]["business"] | {
-        "product": payload["before"]["business"]["product"]
-    }
+    assert payload["before"]["business"]["notice"]["current_fee"] == "1.00"
+    assert payload["after"]["business"]["notice"]["current_fee"] == "128.50"
 
 
 async def test_reset_rejects_non_json_body(stack: Stack) -> None:
@@ -169,9 +170,9 @@ async def test_reset_rejects_non_json_body(stack: Stack) -> None:
 async def test_scenarios_list_exposes_metadata(stack: Stack) -> None:
     payload = (await stack.admin.get("/_admin/scenarios", headers=AUTH)).json()
     names = {scenario["name"] for scenario in payload["scenarios"]}
-    assert {"baseline", "price_change", "outage", "slow_site"} <= names
-    entry = next(s for s in payload["scenarios"] if s["name"] == "price_change")
-    assert entry["affects"] == ["business.product.current_price"]
+    assert {"baseline", "fee_change", "title_change"} <= names
+    entry = next(s for s in payload["scenarios"] if s["name"] == "fee_change")
+    assert entry["affects"] == ["business.notice.current_fee"]
     assert entry["description"]
     assert entry["pages"]
 
@@ -183,16 +184,16 @@ async def test_unknown_scenario_is_404(stack: Stack) -> None:
 
 
 async def test_scenario_returns_before_and_after(stack: Stack) -> None:
-    response = await stack.admin.post("/_admin/scenario/price_change", headers=AUTH)
+    response = await stack.admin.post("/_admin/scenario/fee_change", headers=AUTH)
     assert response.status_code == 200
     payload = response.json()
-    assert payload["before"]["business"]["product"]["current_price"] == "128.50"
-    assert payload["after"]["business"]["product"]["current_price"] == "96.00"
+    assert payload["before"]["business"]["notice"]["current_fee"] == "128.50"
+    assert payload["after"]["business"]["notice"]["current_fee"] == "96.00"
     assert payload["after"]["revision"] == payload["before"]["revision"] + 1
 
 
 async def test_scenario_write_requires_auth(stack: Stack) -> None:
-    response = await stack.admin.post("/_admin/scenario/price_change")
+    response = await stack.admin.post("/_admin/scenario/fee_change")
     assert response.status_code == 401
     state = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     assert state["revision"] == 0
@@ -224,7 +225,7 @@ async def test_admin_logs_never_contain_token_or_body(
 ) -> None:
     caplog.set_level(logging.INFO, logger="mocksite.admin")
     await stack.admin.patch(
-        "/_admin/state", json={"business": {"product": {"name": "secret-body-value"}}}, headers=AUTH
+        "/_admin/state", json={"business": {"notice": {"title": "secret-body-value"}}}, headers=AUTH
     )
     text = "\n".join(record.getMessage() for record in caplog.records)
     assert "PATCH" in text
@@ -242,23 +243,24 @@ async def test_unauthorized_requests_are_logged_without_secrets(
     assert "leaked-token-value" not in text
 
 
-async def test_admin_survives_site_outage(stack: Stack) -> None:
-    await stack.admin.patch("/_admin/state", json={"faults": {"kind": "outage"}}, headers=AUTH)
+async def test_admin_stays_available_after_a_data_change(stack: Stack) -> None:
+    await stack.admin.patch(
+        "/_admin/state", json={"business": {"notice": {"current_fee": "1.00"}}}, headers=AUTH
+    )
     response = await stack.admin.get("/_admin/state", headers=AUTH)
     assert response.status_code == 200
-    assert response.json()["faults"]["kind"] == "outage"
+    assert response.json()["business"]["notice"]["current_fee"] == "1.00"
 
 
 async def test_state_round_trips_through_json(stack: Stack) -> None:
     original = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     await stack.admin.patch(
         "/_admin/state",
-        json={"business": original["business"], "faults": original["faults"]},
+        json={"business": original["business"]},
         headers=AUTH,
     )
     after = (await stack.admin.get("/_admin/state", headers=AUTH)).json()
     assert after["business"] == original["business"]
-    assert after["faults"] == original["faults"]
 
 
 async def test_client_error_on_unknown_route_does_not_leak(stack: Stack) -> None:
@@ -268,5 +270,5 @@ async def test_client_error_on_unknown_route_does_not_leak(stack: Stack) -> None
 
 async def test_http_client_sees_revision_header_on_site(stack: Stack) -> None:
     async with httpx.AsyncClient(base_url=str(stack.site.base_url)) as client:
-        response = await client.get("/api/data")
+        response = await client.get("/api/views")
     assert response.headers["x-mocksite-revision"] == "0"

@@ -1,12 +1,13 @@
 """Catalogue of target pages and their stable selectors (README §3.3).
 
-Single source of truth for the admin UI's "target pages" panel and for any
-script that needs to know which selector belongs to which page. Pages that are
-not implemented yet are listed with ``implemented=False`` so the UI can show
-them as planned instead of pretending they work.
+Single source of truth for the admin UI's selector reference and for any script
+that needs to know which selector belongs to which page. Pages that are not
+implemented yet are listed with ``implemented=False`` so the UI can show them as
+planned instead of pretending they work.
 
-Selectors are grouped by role, because the product page has *several*
-price-shaped nodes: a collector must know which one is the price to monitor.
+Selectors are grouped by role, because a real notice page has *several*
+money-shaped and date-shaped nodes: a collector must know which one is the fee
+to monitor and which of the four dates is the execution date.
 
 The DOM shape of every page is fixed — scenarios change data only — so there is
 no "this selector breaks under scenario X" note anywhere in this catalogue.
@@ -43,211 +44,167 @@ class TargetPage:
     selectors: tuple[Selector, ...] = ()
 
 
-PRODUCT_PRICE = Selector(
-    label="商品现价",
-    css="#product #current-price",
-    xpath='//*[@id="product"]//*[@id="current-price"]',
+NOTICE_FEE = Selector(
+    label="现行标准",
+    css="#notice #current-fee",
+    xpath='//*[@id="notice"]//*[@id="current-fee"]',
     role=ROLE_PRIMARY,
-    note="唯一应当监控的价格节点。",
+    note="唯一应当监控的金额节点。",
 )
-PRODUCT_NAME = Selector(
-    label="商品名称",
-    css="#product #product-name",
-    xpath='//*[@id="product"]//*[@id="product-name"]',
+NOTICE_EFFECTIVE_DATE = Selector(
+    label="执行日期",
+    css="#notice #effective-date",
+    xpath='//*[@id="notice"]//*[@id="effective-date"]',
+    role=ROLE_PRIMARY,
+    note="唯一决定新标准何时执行的日期；其余三处都是发布时间。",
+)
+NOTICE_TITLE = Selector(
+    label="通知标题",
+    css="#notice #notice-title",
+    xpath='//*[@id="notice"]//*[@id="notice-title"]',
     role=ROLE_SUPPORTING,
-    note="标题文本，含品牌与规格。",
+    note="标题文本；正文段落另有节点。",
 )
-PRODUCT_SKU = Selector(
-    label="商品 SKU",
-    css="#product-sku",
-    xpath='//*[@id="product-sku"]',
-    role=ROLE_SUPPORTING,
-)
-PRODUCT_STOCK = Selector(
-    label="库存状态",
-    css="#stock-status",
-    xpath='//*[@id="stock-status"]',
-    role=ROLE_SUPPORTING,
-    note="文本随库存枚举变化；父节点 data-stock 给出机器可读值。",
-)
-PRODUCT_RATING = Selector(
-    label="评分（数字）",
-    css="#product #rating-value",
-    xpath='//*[@id="product"]//*[@id="rating-value"]',
-    role=ROLE_SUPPORTING,
-    note="十进制字符串；不要从星级字符反推。",
-)
-PRODUCT_REVIEW_COUNT = Selector(
-    label="评价总数",
-    css="#review-count",
-    xpath='//*[@id="review-count"]',
+NOTICE_DOC_NO = Selector(
+    label="文号",
+    css="#notice-doc-no",
+    xpath='//*[@id="notice-doc-no"]',
     role=ROLE_SUPPORTING,
 )
-PRODUCT_ORIGINAL_PRICE = Selector(
-    label="原价（划线价）",
-    css="#product #original-price",
-    xpath='//*[@id="product"]//*[@id="original-price"]',
+NOTICE_STATUS = Selector(
+    label="通知状态",
+    css="#notice-status",
+    xpath='//*[@id="notice-status"]',
+    role=ROLE_SUPPORTING,
+    note="文本随状态枚举变化；父节点 data-status 给出机器可读值。",
+)
+NOTICE_DEPARTMENT = Selector(
+    label="发布单位",
+    css="#notice-department",
+    xpath='//*[@id="notice-department"]',
+    role=ROLE_SUPPORTING,
+)
+NOTICE_BODY = Selector(
+    label="正文段落",
+    css="#notice-body p",
+    xpath='//*[@id="notice-body"]/p',
+    role=ROLE_PRIMARY,
+    note="每段一个节点；整页文本比对会被页头页脚干扰。",
+)
+NOTICE_ATTACHMENTS = Selector(
+    label="附件条目",
+    css="#attachments .attachment-item",
+    xpath='//*[@id="attachments"]//li[contains(@class,"attachment-item")]',
+    role=ROLE_SUPPORTING,
+    note="链接文本是文件名，父节点 data-kind 给出文件类型。",
+)
+NOTICE_PREV = Selector(
+    label="上一篇标题",
+    css="#prev-notice",
+    xpath='//*[@id="prev-notice"]',
     role=ROLE_DECOY,
-    note="诱饵：也是价格形状，但语义是原价，不是当前价。",
+    note="诱饵：也是一条通知标题，但不是当前公告的内容。",
 )
-PRODUCT_INSTALLMENT = Selector(
-    label="分期价",
-    css=".installment-price strong",
-    xpath='//*[contains(@class,"installment-price")]//strong',
+NOTICE_PREVIOUS_FEE = Selector(
+    label="原标准（划线价）",
+    css="#notice #previous-fee",
+    xpath='//*[@id="notice"]//*[@id="previous-fee"]',
     role=ROLE_DECOY,
-    note="诱饵：分期每期金额，数值约为现价的 1/4。",
+    note="诱饵：也是金额形状，但语义是调整前标准，不是现行标准。",
 )
-PRODUCT_UNIT_PRICE = Selector(
-    label="单位价",
-    css=".unit-price strong",
-    xpath='//*[contains(@class,"unit-price")]//strong',
+NOTICE_UNIT_FEE = Selector(
+    label="折算单位费",
+    css=".unit-fee strong",
+    xpath='//*[contains(@class,"unit-fee")]//strong',
     role=ROLE_DECOY,
-    note="诱饵：每 100 g 单价，数值约为现价的 1/10。",
+    note="诱饵：每 30 分钟加收金额，数值约为现行标准的 1/4。",
 )
-PRODUCT_MSRP = Selector(
-    label="标价（List price）",
-    css=".msrp-price",
-    xpath='//*[contains(@class,"msrp-price")]',
+NOTICE_CAP_FEE = Selector(
+    label="单日封顶",
+    css=".cap-fee strong",
+    xpath='//*[contains(@class,"cap-fee")]//strong',
     role=ROLE_DECOY,
-    note="诱饵：整段文本里同时含原价与节省金额。",
+    note="诱饵：单日累计上限，数值约为现行标准的 1/10。",
 )
-PRODUCT_SPECS = Selector(
-    label="规格表行",
-    css="#specs .spec-table tbody tr",
-    xpath='//*[@id="specs"]//tbody/tr',
-    role=ROLE_SUPPORTING,
-    note="每行 th=标签、td=值。",
+NOTICE_PREVIOUS_NOTE = Selector(
+    label="原标准说明段",
+    css=".previous-fee-note",
+    xpath='//*[contains(@class,"previous-fee-note")]',
+    role=ROLE_DECOY,
+    note="诱饵：整段文本里同时含原标准与差额。",
 )
-PRODUCT_HIGHLIGHTS = Selector(
-    label="卖点列表",
-    css="#product .highlights li",
-    xpath='//*[@id="product"]//*[contains(@class,"highlights")]/li',
-    role=ROLE_SUPPORTING,
+NOTICE_BADGE_DATE = Selector(
+    label="日期徽章（发布时间）",
+    css="#date-badge",
+    xpath='//*[@id="date-badge"]',
+    role=ROLE_DECOY,
+    note="诱饵：'10月20日' 形式，是发布时间，不是执行日期。",
 )
-PRODUCT_GALLERY = Selector(
-    label="主图",
-    css="#gallery-image",
-    xpath='//*[@id="gallery-image"]',
-    role=ROLE_SUPPORTING,
+NOTICE_PUBLISHED_CN = Selector(
+    label="中文发布日期",
+    css="#published-date-cn",
+    xpath='//*[@id="published-date-cn"]',
+    role=ROLE_DECOY,
+    note="诱饵：'2026年10月20日'，与徽章同一时刻的另一种渲染。",
 )
-REVIEWS_READY = Selector(
-    label="评价区就绪标记",
-    css='#reviews[data-ready="true"]',
-    xpath='//*[@id="reviews" and @data-ready="true"]',
+NOTICE_PUBLISHED_AT = Selector(
+    label="发布时间戳",
+    css="#published-at",
+    xpath='//*[@id="published-at"]',
+    role=ROLE_DECOY,
+    note="诱饵：'2026-10-20 14:32'，最像执行日期的一处。",
+)
+VIEW_COUNT = Selector(
+    label="点击次数（脚本填充）",
+    css='#view-count[data-loaded="true"]',
+    xpath='//*[@id="view-count" and @data-loaded="true"]',
     role=ROLE_READY,
-    note="只有第一页评价真正渲染后才会出现；静态 HTML 里是骨架屏。",
-)
-REVIEWS_LIST = Selector(
-    label="评价条目",
-    css="#reviews-list li.review-item",
-    xpath=(
-        '//*[@id="reviews-list"]/li[contains(concat(" ", normalize-space(@class), " "),'
-        ' " review-item ")]'
-    ),
-    role=ROLE_PRIMARY,
-)
-REVIEWS_MORE = Selector(
-    label="加载更多评价按钮",
-    css="#load-more-reviews",
-    xpath='//*[@id="load-more-reviews"]',
-    role=ROLE_SUPPORTING,
-    note="末页后 hidden；加载中 disabled。",
-)
-
-LIST_READY = Selector(
-    label="列表就绪标记",
-    css='#app[data-ready="true"]',
-    xpath='//*[@id="app" and @data-ready="true"]',
-    role=ROLE_READY,
-    note="数据加载并渲染完成后才设置；失败时不设置。",
-)
-LIST_ROWS = Selector(
-    label="列表行",
-    css="#inventory tbody tr.item",
-    xpath=(
-        "//*[@id=\"inventory\"]/tbody/tr[contains(concat(' ', normalize-space(@class), ' '),"
-        " ' item ')]"
-    ),
-    role=ROLE_PRIMARY,
-    note="data-id 属性保存稳定业务 ID。",
-)
-ROW_PRICE = Selector(
-    label="行内价格（相对当前行）",
-    css="td.price",
-    xpath=".//td[contains(concat(' ', normalize-space(@class), ' '), ' price ')]",
-    role=ROLE_PRIMARY,
-)
-LOAD_MORE = Selector(
-    label="下一页按钮",
-    css="#load-more",
-    xpath='//*[@id="load-more"]',
-    role=ROLE_SUPPORTING,
+    note="静态 HTML 为空，由页面脚本请求 /api/views 后填充；等待它可识别异步计数。",
 )
 
 PAGES: tuple[TargetPage, ...] = (
     TargetPage(
-        path="/static/product",
+        path="/static/notice",
         purpose=(
-            "真实电商详情页：图库、多重价格节点、库存、变体、规格、懒加载评价；"
-            "状态提交时预渲染，无 JS 也能拿到主内容"
+            "真实高校通知详情页：标题、发布单位、点击次数（脚本异步填充）、"
+            "同一时刻的三种日期渲染、正文段落、附件下载、上一篇下一篇；"
+            "状态提交时预渲染，无 JS 也能拿到正文"
         ),
         implemented=True,
         selectors=(
-            PRODUCT_PRICE,
-            PRODUCT_NAME,
-            PRODUCT_SKU,
-            PRODUCT_STOCK,
-            PRODUCT_RATING,
-            PRODUCT_REVIEW_COUNT,
-            PRODUCT_ORIGINAL_PRICE,
-            PRODUCT_INSTALLMENT,
-            PRODUCT_UNIT_PRICE,
-            PRODUCT_MSRP,
-            PRODUCT_SPECS,
-            PRODUCT_HIGHLIGHTS,
-            PRODUCT_GALLERY,
-            REVIEWS_READY,
-            REVIEWS_LIST,
-            REVIEWS_MORE,
+            NOTICE_FEE,
+            NOTICE_EFFECTIVE_DATE,
+            NOTICE_TITLE,
+            NOTICE_DOC_NO,
+            NOTICE_STATUS,
+            NOTICE_DEPARTMENT,
+            NOTICE_BODY,
+            NOTICE_ATTACHMENTS,
+            NOTICE_PREVIOUS_FEE,
+            NOTICE_UNIT_FEE,
+            NOTICE_CAP_FEE,
+            NOTICE_PREVIOUS_NOTE,
+            NOTICE_BADGE_DATE,
+            NOTICE_PUBLISHED_CN,
+            NOTICE_PUBLISHED_AT,
+            VIEW_COUNT,
+            NOTICE_PREV,
         ),
     ),
     TargetPage(
-        path="/ssr/product",
-        purpose="同一份商品详情页，每次请求按当前状态渲染（对比静态预渲染）",
+        path="/ssr/notice",
+        purpose="同一份通知详情页，每次请求按当前状态渲染（对比静态预渲染）",
         implemented=True,
-        selectors=(PRODUCT_PRICE, PRODUCT_NAME, REVIEWS_READY, REVIEWS_LIST),
+        selectors=(NOTICE_FEE, NOTICE_EFFECTIVE_DATE, NOTICE_BODY, VIEW_COUNT),
     ),
     TargetPage(
-        path="/react/list",
-        purpose="React 在浏览器中拉取并渲染列表；验证 JS 执行与就绪等待",
-        implemented=True,
-        selectors=(LIST_READY, LIST_ROWS, ROW_PRICE),
-    ),
-    TargetPage(
-        path="/vue/list",
-        purpose="同一组列表数据在 Vue 下渲染",
-        implemented=True,
-        selectors=(LIST_READY, LIST_ROWS, ROW_PRICE),
-    ),
-    TargetPage(
-        path="/dynamic/deals",
-        purpose="首屏一页，点击“加载更多”追加下一页；验证分页聚合与结束判断",
-        implemented=True,
-        selectors=(LIST_READY, LIST_ROWS, ROW_PRICE, LOAD_MORE),
-    ),
-    TargetPage(
-        path="/api/data",
-        purpose="当前商品、列表与评价的 JSON 数据；前端数据源与人工核对",
-        implemented=True,
-    ),
-    TargetPage(
-        path="/api/reviews",
-        purpose="评价分页 JSON（?page=N），便于不经 DOM 分页验证",
+        path="/api/views",
+        purpose="点击次数的 JSON 端点；静态页由脚本异步请求",
         implemented=True,
     ),
     TargetPage(
         path="/health",
-        purpose="进程存活；不受场景故障影响",
+        purpose="进程存活；不随业务数据变化",
         implemented=True,
     ),
 )

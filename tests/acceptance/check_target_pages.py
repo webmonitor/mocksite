@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""Acceptance: the target pages a collector fetches.
+"""Acceptance: the target page a collector fetches.
 
-Every external origin is aborted, so a passing run also proves the pages work
+Every external origin is aborted, so a passing run also proves the page works
 with no CDN and no egress.
 
 Covers what a collector depends on:
-  * readiness only after rows exist (`#app[data-ready="true"]` + `data-revision`)
-  * React and Vue rendering the same data
-  * pagination: one page per click, disabled while loading, hidden at the end
-  * empty list vs load failure vs duplicate rows
-  * the product page's fixed skeleton, decoy price nodes and lazy reviews
+  * the notice page's fixed skeleton, decoy fee nodes, the one instant rendered
+    three ways, the script-filled click counter and the real body paragraphs
   * data scenarios moving values while the DOM skeleton stays identical
-  * outage leaves the page unready
+  * the list pages, their assets and the JSON data endpoint being gone
 """
 
 from __future__ import annotations
@@ -30,28 +27,23 @@ from _harness import (
     run_as_script,
 )
 
-ROWS = "#inventory tbody tr.item"
+REMOVED_PATHS = (
+    "/react/list",
+    "/vue/list",
+    "/dynamic/archive",
+    "/api/data",
+    "/static/shared/list.js",
+    "/static/shared/list.css",
+    "/static/shared/archive.js",
+    "/static/react/react-list.js",
+    "/static/vue/vue-list.js",
+)
 
 
-def _rows(page: Page) -> list[tuple[str, str]]:
-    return page.eval_on_selector_all(
-        ROWS,
-        """els => els.map(el => [
-            el.dataset.id,
-            el.querySelector('td.price')?.textContent ?? ''
-        ])""",
-    )
-
-
-def _open(page: Page, site: str, path: str) -> None:
+def _open_notice(page: Page, site: str, path: str = "/static/notice") -> None:
+    """Notice pages are server-rendered; only the click counter waits on JS."""
     page.goto(f"{site}{path}", wait_until="domcontentloaded")
-    page.wait_for_selector('#app[data-ready="true"]', timeout=15_000)
-
-
-def _open_product(page: Page, site: str, path: str = "/static/product") -> None:
-    """Product pages are server-rendered; only the review list waits on JS."""
-    page.goto(f"{site}{path}", wait_until="domcontentloaded")
-    page.wait_for_selector('#reviews[data-ready="true"]', timeout=15_000)
+    page.wait_for_selector('#view-count[data-loaded="true"]', timeout=15_000)
 
 
 def run(args, token: str) -> Results:
@@ -80,167 +72,178 @@ def run(args, token: str) -> Results:
         page.route("**/*", route)
         console.attach(page)
 
-        # --- realistic product-detail page ------------------------------
-        _open_product(page, site)
+        # --- realistic notice-detail page -------------------------------
+        _open_notice(page, site)
         results.check(
-            "product page price is unique",
-            page.locator("#current-price").count() == 1,
+            "notice page fee is unique",
+            page.locator("#current-fee").count() == 1,
         )
         results.check(
-            "product page price text",
-            page.inner_text("#current-price") == "128.50",
-            page.inner_text("#current-price"),
+            "notice page fee text",
+            page.inner_text("#current-fee") == "128.50",
+            page.inner_text("#current-fee"),
         )
         results.check(
-            "product page carries a revision",
-            page.get_attribute("#product", "data-revision") is not None,
+            "notice page carries a revision",
+            page.get_attribute("#notice", "data-revision") is not None,
         )
         # The decoys must be selectable, otherwise they are not decoys.
         for label, selector in (
-            ("original price", "#original-price"),
-            ("instalment price", ".installment-price strong"),
-            ("unit price", ".unit-price strong"),
-            ("msrp", ".msrp-price"),
+            ("previous fee", "#previous-fee"),
+            ("unit fee", ".unit-fee strong"),
+            ("cap fee", ".cap-fee strong"),
+            ("previous note", ".previous-fee-note"),
+            ("date badge", "#date-badge"),
+            ("chinese publication date", "#published-date-cn"),
+            ("publication timestamp", "#published-at"),
+            ("prev notice title", "#prev-notice"),
         ):
             results.check(f"decoy present: {label}", page.locator(selector).count() == 1)
         results.check(
-            "price-shaped values are plentiful",
-            len(page.locator(".price-block").inner_text().split(".")) >= 4,
+            "money-shaped values are plentiful",
+            len(page.locator(".fee-block").inner_text().split(".")) >= 4,
+        )
+
+        # One publication instant, three renderings, plus the execution date.
+        badge = page.inner_text("#date-badge").replace("\n", "").strip()
+        full = page.inner_text("#published-date-cn")
+        stamp = page.inner_text("#published-at")
+        results.check(
+            "one instant rendered three ways",
+            badge.startswith("10月20日") and full == "2026年10月20日" and stamp == "2026-10-20 14:32",
+            (badge, full, stamp),
         )
         results.check(
-            "reviews render as rows, not skeletons",
-            page.locator("#reviews-list li.review-item").count() == 2
-            and page.locator(".review-skeleton").count() == 0,
+            "effective date is a different date entirely",
+            page.inner_text("#effective-date") == "2026-11-01",
+            page.inner_text("#effective-date"),
         )
         results.check(
-            "review list is paged",
-            page.locator("#load-more-reviews").is_visible(),
-        )
-        page.click("#load-more-reviews")
-        page.wait_for_timeout(400)
-        results.check(
-            "review pagination appends",
-            page.locator("#reviews-list li.review-item").count() == 4,
+            "click counter is filled by the script",
+            page.get_attribute("#view-count", "data-loaded") == "true"
+            and page.inner_text("#view-count") == "128",
+            page.inner_text("#view-count"),
         )
         results.check(
-            "gallery switches main image",
-            page.locator("#gallery-image").get_attribute("src") != ""
-            and page.locator("[data-gallery-index]").count() == 4,
-        )
-        page.locator("[data-gallery-index]").nth(2).click()
-        results.check(
-            "gallery click changes the image",
-            "black" in (page.locator("#gallery-image").get_attribute("src") or ""),
+            "body is real paragraphs",
+            page.locator("#notice-body p").count() >= 5,
+            page.locator("#notice-body p").count(),
         )
         results.check(
-            "variant buttons expose selection",
-            page.locator(".variant-option[aria-pressed=true]").count() == 2,
-        )
-        page.locator(".variant-option", has_text="Chili red").click()
-        results.check(
-            "variant selection updates",
-            "Chili red" in page.inner_text("#selected-variant"),
+            "attachments carry kind",
+            page.locator("#attachments .attachment-item").count() == 4
+            and page.locator('#attachments .attachment-item[data-kind="pdf"]').count() == 2,
         )
         results.check(
-            "specs table is real markup",
-            page.locator("#specs .spec-table tbody tr").count() == 7,
+            "prev/next navigation is present",
+            page.locator("#prev-notice").count() == 1 and page.locator("#next-notice").count() == 1,
         )
         results.check(
-            "stock state is machine-readable",
-            page.get_attribute(".stock-line", "data-stock") == "in_stock",
+            "status is machine-readable",
+            page.get_attribute(".status-line", "data-status") == "published",
+        )
+
+        # SSR must produce the same skeleton as the pre-rendered page.
+        _open_notice(page, site, "/ssr/notice")
+        results.check(
+            "ssr page exposes the same fee",
+            page.inner_text("#current-fee") == "128.50",
+        )
+        results.check(
+            "ssr page fills the counter too",
+            page.get_attribute("#view-count", "data-loaded") == "true",
         )
 
         # Data scenarios: values move, the DOM skeleton never does.
-        scenario("price_change")
-        _open_product(page, site)
+        scenario("fee_change")
+        _open_notice(page, site)
         results.check(
-            "price_change moves the price value",
-            page.inner_text("#current-price") == "96.00",
+            "fee_change moves the fee value",
+            page.inner_text("#current-fee") == "96.00",
         )
         results.check(
-            "price_change keeps every structural node",
-            page.locator("#original-price").count() == 1
-            and page.locator("#gallery-image").count() == 1
-            and page.locator("#rating-value").count() == 1
-            and page.locator("#reviews").count() == 1,
-        )
-
-        scenario("price_increase")
-        _open_product(page, site)
-        results.check(
-            "price_increase moves the price upward",
-            page.inner_text("#current-price") == "158.00",
+            "fee_change keeps every structural node",
+            page.locator("#previous-fee").count() == 1
+            and page.locator("#notice-body").count() == 1
+            and page.locator("#effective-date").count() == 1
+            and page.locator("#attachments").count() == 1,
         )
 
-        scenario("stock_out")
-        _open_product(page, site)
+        scenario("fee_increase")
+        _open_notice(page, site)
         results.check(
-            "stock_out shows the out-of-stock state",
-            page.get_attribute(".stock-line", "data-stock") == "out_of_stock",
-        )
-        results.check(
-            "stock_out disables the cart button", page.locator("#add-to-cart").is_disabled()
-        )
-        results.check(
-            "stock_out keeps the price value",
-            page.inner_text("#current-price") == "128.50",
+            "fee_increase moves the fee upward",
+            page.inner_text("#current-fee") == "158.00",
         )
 
-        scenario("rating_change")
-        _open_product(page, site)
+        scenario("notice_withdrawn")
+        _open_notice(page, site)
         results.check(
-            "rating_change moves the rating value",
-            page.inner_text("#rating-value") == "3.20",
+            "notice_withdrawn shows the withdrawn state",
+            page.get_attribute(".status-line", "data-status") == "withdrawn",
         )
         results.check(
-            "rating_change moves the review count",
-            "131" in page.inner_text("#review-count"),
-        )
-
-        scenario("reviews_empty")
-        _open_product(page, site)
-        results.check(
-            "reviews_empty is ready with zero rows",
-            page.get_attribute("#reviews", "data-ready") == "true"
-            and page.locator("#reviews-list li.review-item").count() == 0,
+            "notice_withdrawn shows a banner",
+            page.locator("#withdrawn-banner").count() == 1,
         )
         results.check(
-            "reviews_empty keeps the price value",
-            page.inner_text("#current-price") == "128.50",
+            "notice_withdrawn keeps the fee value",
+            page.inner_text("#current-fee") == "128.50",
         )
 
-        scenario("reviews_grow")
-        _open_product(page, site)
+        scenario("effective_date_shift")
+        _open_notice(page, site)
         results.check(
-            "reviews_grow keeps the first page size",
-            page.locator("#reviews-list li.review-item").count() == 2,
+            "effective_date_shift moves the effective date",
+            page.inner_text("#effective-date") == "2026-12-01",
         )
         results.check(
-            "reviews_grow reports four pages",
-            "1 of 4" in page.inner_text("#reviews-status"),
+            "effective_date_shift leaves the publication alone",
+            page.inner_text("#published-at") == "2026-10-20 14:32"
+            and page.inner_text("#published-date-cn") == "2026年10月20日",
+        )
+
+        scenario("title_change")
+        _open_notice(page, site)
+        results.check(
+            "title_change moves only the heading",
+            page.inner_text("#notice-title").endswith("补充通知")
+            and page.inner_text("#current-fee") == "128.50",
+        )
+
+        scenario("view_count_grow")
+        _open_notice(page, site)
+        results.check(
+            "view_count_grow changes only the counter",
+            page.inner_text("#view-count") == "1531"
+            and page.inner_text("#current-fee") == "128.50",
+        )
+        results.check(
+            "view_count_grow leaves the publication alone",
+            page.inner_text("#published-at") == "2026-10-20 14:32",
         )
 
         # Every scenario must leave the same DOM skeleton behind. This is the
         # contract that replaced the old structural-breakage scenarios.
         markers = (
-            "#current-price",
-            "#original-price",
-            "#rating-value",
-            "#gallery-image",
-            "#reviews",
+            "#current-fee",
+            "#previous-fee",
+            "#effective-date",
+            "#notice-body",
+            "#attachments",
         )
         shapes = {}
         for name in (
             "baseline",
-            "price_change",
-            "price_increase",
-            "stock_out",
-            "rating_change",
-            "reviews_empty",
-            "reviews_grow",
+            "fee_change",
+            "fee_increase",
+            "notice_withdrawn",
+            "effective_date_shift",
+            "title_change",
+            "view_count_grow",
         ):
             scenario(name)
-            _open_product(page, site)
+            _open_notice(page, site)
             shapes[name] = [marker for marker in markers if page.locator(marker).count() == 1]
         baseline_shape = shapes["baseline"]
         results.check(
@@ -250,118 +253,26 @@ def run(args, token: str) -> Results:
         )
         reset_server(admin, token)
 
-        # --- React and Vue render the same rows -------------------------
-        for path in ("/react/list", "/vue/list"):
-            _open(page, site, path)
-            results.check(
-                f"{path} exposes revision", page.get_attribute("#app", "data-revision") is not None
-            )
-            results.check(
-                f"{path} rows in order",
-                [row[0] for row in _rows(page)] == ["A", "B", "C"],
-                _rows(page),
-            )
-            results.check(
-                f"{path} renders prices in td.price",
-                [row[1] for row in _rows(page)] == ["10.00", "20.00", "30.00"],
-                _rows(page),
-            )
-            results.check(
-                f"{path} no data-ready before load",
-                page.get_attribute("#app", "data-ready") == "true",
-            )
+        # --- the list pages are gone ------------------------------------
+        for path in REMOVED_PATHS:
+            response = page.request.get(f"{site}{path}")
+            results.check(f"removed: {path}", response.status == 404, response.status)
 
-        # --- pagination ------------------------------------------------
+        # --- assets are served locally, with no egress ------------------
+        for asset_path in ("/static/shared/notice.css", "/static/shared/notice.js"):
+            asset = page.request.get(f"{site}{asset_path}")
+            results.check(f"asset served: {asset_path}", asset.status == 200)
+
+        # --- the counter follows a reset --------------------------------
         reset_server(admin, token)
-        _open(page, site, "/dynamic/deals")
+        _open_notice(page, site)
         results.check(
-            "deals first screen is one page", [r[0] for r in _rows(page)] == ["A", "B"], _rows(page)
-        )
-        results.check("load-more visible while more pages", page.locator("#load-more").is_visible())
-        page.locator("#load-more").click()
-        page.wait_for_function(f"() => document.querySelectorAll('{ROWS}').length === 3")
-        results.check("one click appends one page", [r[0] for r in _rows(page)] == ["A", "B", "C"])
-        results.check("load-more hidden at end", page.locator("#load-more").is_hidden())
-
-        scenario("pagination_grow")
-        _open(page, site, "/dynamic/deals")
-        clicks = 0
-        while page.locator("#load-more").is_visible():
-            before = len(_rows(page))
-            page.locator("#load-more").click()
-            page.wait_for_function(f"() => document.querySelectorAll('{ROWS}').length > {before}")
-            clicks += 1
-            if clicks > 10:  # pragma: no cover - guard against a stuck button
-                break
-        results.check("growth adds a third page", clicks == 2, clicks)
-        results.check(
-            "complete ordered ids after pagination",
-            [r[0] for r in _rows(page)] == ["A", "B", "C", "D", "E"],
-            _rows(page),
-        )
-
-        # --- empty list is not a failure -------------------------------
-        scenario("empty_list")
-        _open(page, site, "/dynamic/deals")
-        results.check("empty list still ready", page.get_attribute("#app", "data-ready") == "true")
-        results.check("empty list has no rows", _rows(page) == [])
-        results.check("empty list hides load-more", page.locator("#load-more").is_hidden())
-
-        # --- item price change ----------------------------------------
-        scenario("item_price_change")
-        for path in ("/react/list", "/vue/list"):
-            _open(page, site, path)
-            prices = dict(_rows(page))
-            results.check(f"{path} row A price updated", prices["A"] == "12.50", prices)
-            results.check(
-                f"{path} other rows unchanged", prices["B"] == "20.00" and prices["C"] == "30.00"
-            )
-
-        # --- the price cell class is stable under data changes ----------
-        scenario("item_price_change")
-        for path in ("/react/list", "/vue/list"):
-            _open(page, site, path)
-            results.check(
-                f"{path} rows still present after a price change",
-                page.locator(ROWS).count() == 3,
-            )
-            results.check(
-                f"{path} td.price keeps its class and count",
-                page.locator(f"{ROWS} td.price").count() == 3
-                and page.locator(f"{ROWS} td.cost").count() == 0,
-            )
-
-        # --- duplicate rows -------------------------------------------
-        scenario("duplicate_rows")
-        _open(page, site, "/react/list")
-        results.check(
-            "duplicate id visible", [r[0] for r in _rows(page)] == ["A", "B", "C", "A"], _rows(page)
-        )
-
-        # --- outage leaves the page unready ---------------------------
-        scenario("outage")
-        response = page.goto(f"{site}/react/list", wait_until="domcontentloaded")
-        page.wait_for_timeout(500)
-        results.check("outage returns 500", response is not None and response.status == 500)
-        results.check(
-            "outage sets no ready marker", page.locator('#app[data-ready="true"]').count() == 0
-        )
-
-        # assets stay reachable during an outage so the failure is diagnosable
-        asset = page.request.get(f"{site}/static/shared/list.js")
-        results.check("assets survive outage", asset.status == 200)
-
-        reset_server(admin, token)
-        _open(page, site, "/react/list")
-        results.check(
-            "recovery makes the page ready again",
-            page.locator('#app[data-ready="true"]').count() == 1,
+            "recovery restores the counter",
+            page.inner_text("#view-count") == "128",
         )
 
         results.check("no external requests", blocked == [], blocked[:5])
-        # The outage step deliberately produces one 500; any other console error
-        # would mean a broken page.
-        unexpected = console.unexpected(allowed_statuses=("500",))
+        unexpected = console.unexpected()
         results.check("no unexpected console errors", not unexpected, unexpected[:5])
 
         browser.close()

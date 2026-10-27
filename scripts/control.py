@@ -6,8 +6,8 @@ and a human take exactly the same path.
 
     export MOCKSITE_TOKEN=$(openssl rand -hex 32)
     python scripts/control.py state
-    python scripts/control.py scenario price_change
-    python scripts/control.py patch '{"business": {"product": {"current_price": "96.00"}}}'
+    python scripts/control.py scenario fee_change
+    python scripts/control.py patch '{"business": {"notice": {"current_fee": "96.00"}}}'
     python scripts/control.py reset
     python scripts/control.py scenarios
     python scripts/control.py pages
@@ -78,11 +78,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("state", help="print the current state")
     sub.add_parser("scenarios", help="list available scenarios")
     sub.add_parser("pages", help="list target pages with URLs and selectors")
-    sub.add_parser("reset", help="restore defaults, clearing faults")
+    sub.add_parser("reset", help="restore the default data")
     scenario = sub.add_parser("scenario", help="apply a preset scenario")
     scenario.add_argument("name")
     patch = sub.add_parser("patch", help="PATCH state from a JSON object")
-    patch.add_argument("json", help='JSON object, e.g. \'{"business": {"page_size": 3}}\'')
+    patch.add_argument(
+        "json", help='JSON object, e.g. \'{"business": {"notice": {"current_fee": "96.00"}}}\''
+    )
 
     args = parser.parse_args(argv)
     admin = args.admin.rstrip("/")

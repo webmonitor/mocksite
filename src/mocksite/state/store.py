@@ -62,7 +62,7 @@ class StateStore:
 
     @property
     def static_html(self) -> str:
-        """HTML pre-rendered at the last commit (``/static/product``)."""
+        """HTML pre-rendered at the last commit (``/static/notice``)."""
         return self._static
 
     def snapshot(self) -> tuple[State, str]:
@@ -114,7 +114,7 @@ class StateStore:
             return before, after
 
     def reset(self) -> tuple[State, State]:
-        """Restore defaults, clearing faults and counters; advances revision."""
+        """Restore defaults; advances revision."""
         with self._lock:
             before = self._state
             after = self._commit_locked(DEFAULT_STATE)

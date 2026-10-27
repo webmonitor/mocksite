@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="80" viewBox="0 0 64 80" role="img" aria-label="DOC 附件">
+  <path d="M8 2h34l14 14v62H8z" fill="#ffffff" stroke="#c4ccd4" stroke-width="2"/>
+  <path d="M42 2v14h14" fill="none" stroke="#c4ccd4" stroke-width="2"/>
+  <rect x="8" y="52" width="48" height="26" fill="#2c5fa8"/>
+  <text x="32" y="70" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#ffffff">DOC</text>
+  <g fill="#e9edf1">
+    <rect x="16" y="22" width="30" height="4" rx="2"/>
+    <rect x="16" y="32" width="22" height="4" rx="2"/>
+  </g>
+</svg>

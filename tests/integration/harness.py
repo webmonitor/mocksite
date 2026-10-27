@@ -19,7 +19,7 @@ import uvicorn
 
 from mocksite.admin.api import create_admin_app
 from mocksite.scenarios.registry import build_default_store
-from mocksite.site.render import render_product
+from mocksite.site.render import render_notice
 from mocksite.site.routes import create_site_app
 from mocksite.state.store import StateStore
 
@@ -89,7 +89,7 @@ async def running_stack(stack_builder=None) -> AsyncGenerator[Stack]:
 def _builder(token: str = TOKEN, dist: Path | None = None):
     def build() -> tuple[StateStore, object, object]:
         store = build_default_store()
-        store.set_renderer(render_product)
+        store.set_renderer(render_notice)
         site_app = create_site_app(store)
         admin_app = create_admin_app(store, token, dist or Path("does-not-exist"))
         return store, site_app, admin_app

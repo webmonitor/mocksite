@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ notice.title }}-{{ notice.department }}</title>
+    <meta name="pageTitle" content="{{ notice.title }}" />
+    <link rel="stylesheet" href="/static/shared/notice.css" />
+    <script id="mocksite-notice" type="application/json">
+      {
+        "noticeId": {{ notice.id | tojson }},
+        "viewCount": {{ notice.view_count }}
+      }
+    </script>
+  </head>
+  <body>
+    {#- Modelled on notice.xidian.edu.cn / notice.ysu.edu.cn. The traps are
+        deliberate and must survive any future edit:
+
+        * #current-fee is the only fee worth monitoring; the unit fee, daily cap
+          and previous standard are money-shaped decoys;
+        * published_at is rendered three times (badge, 中文日期, 时间戳) and the
+          effective date is a fourth date on the page;
+        * #view-count is filled by the page script, like _showDynClicks. #}
+
+    <div class="head-top">
+      <div class="width">
+        <div class="head-top-l">
+          <span><a href="/static/notice">书记信箱</a></span>
+          <span><a href="/static/notice">校长信箱</a></span>
+          <span><a href="/static/notice">学生邮件</a></span>
+          <span><a href="/static/notice">教工邮件</a></span>
+        </div>
+        <div class="head-top-r">
+          <span><a href="/static/notice">信息公开</a></span>
+          <span><a href="/static/notice">综合信息网</a></span>
+          <span><a href="/static/notice">网站地图</a></span>
+        </div>
+      </div>
+    </div>
+
+    <header class="site-header">
+      <div class="width">
+        <a class="brandmark" href="/static/notice">{{ notice.department }}通知公告</a>
+        <nav class="site-nav" aria-label="主导航">
+          {% for column in columns %}
+          <a href="{{ column.path }}">{{ column.label }}</a>
+          {% endfor %}
+        </nav>
+      </div>
+    </header>
+
+    <div class="width">
+      <nav class="breadcrumbs" aria-label="面包屑">
+        <ol>
+          <li><a href="/static/notice">首页</a></li>
+          <li><a href="/static/notice">通知公告</a></li>
+          <li><a href="/static/notice">{{ notice.category }}</a></li>
+          <li aria-current="page">正文</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="width layout">
+      <main class="content" id="notice" data-revision="{{ revision }}" data-doc-no="{{ notice.doc_no }}">
+        {# ---------- withdrawn banner ---------- #}
+        {% if notice.status == "withdrawn" %}
+        <div class="withdrawn-banner" id="withdrawn-banner" data-status="{{ notice.status }}">
+          本通知已撤回，内容仅供参考，不再执行。
+        </div>
+        {% endif %}
+
+        {# ---------- article head ---------- #}
+        <h1 class="content-bt" id="notice-title">{{ notice.title }}</h1>
+
+        <div class="content-bt-xia" id="notice-meta">
+          <span>时间:<span id="published-at">{{ dates.timestamp }}</span></span>
+          <span>点击次数:<span id="view-count" data-loaded="false"></span></span>
+          <span>发布单位:<a href="/static/notice" id="notice-department">{{ notice.department }}</a></span>
+          <span>文号:<span id="notice-doc-no">{{ notice.doc_no }}</span></span>
+        </div>
+
+        {# ---------- same instant, three renderings ----------
+           The badge and the full date are decoys: both are the publication
+           date, not the effective date. Only #effective-date decides when the
+           new fee applies. #}
+        <div class="date-facts">
+          <span class="date-badge" id="date-badge">
+            {{ dates.badge_day }}<em>{{ dates.badge_year }}</em>
+          </span>
+          <span class="date-full" id="published-date-cn">{{ dates.full_date }}</span>
+          <span class="date-timestamp" id="published-timestamp">{{ dates.timestamp }}</span>
+          <span class="date-effective">
+            执行日期 <span class="date-value" id="effective-date">{{ notice.effective_date }}</span>
+          </span>
+        </div>
+
+        {# ---------- fee block: one target, several decoys ---------- #}
+        <div class="fee-block">
+          <div class="fee-row">
+            <span class="fee-label">现行标准</span>
+            <span id="current-fee">{{ notice.current_fee }}</span>
+            <span class="fee-currency" id="currency">{{ notice.currency }}</span>
+            <span id="previous-fee">{{ notice.previous_fee }}</span>
+            <span class="change-badge" id="change-badge">{{ change_percent }}% 降幅</span>
+          </div>
+          <p class="fee-note unit-fee">首小时后每 30 分钟加收 <strong>{{ unit_fee }}</strong></p>
+          <p class="fee-note cap-fee">单日累计不超过 <strong>{{ cap_fee }}</strong></p>
+          <p class="fee-note previous-fee-note" data-previous="{{ notice.previous_fee }}">
+            调整前标准 {{ notice.previous_fee }} {{ notice.currency }} — 每车次减少 {{ savings }}
+          </p>
+        </div>
+
+        <div class="status-line" data-status="{{ notice.status }}">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="notice-status">{{ status_label }}</span>
+        </div>
+
+        {# ---------- body ---------- #}
+        <div class="content-text" id="notice-body">
+          {% for paragraph in body_paragraphs %}
+          <p>{{ paragraph }}</p>
+          {% endfor %}
+        </div>
+
+        <div class="content-actions">
+          <button type="button" class="btn-print" id="print-notice">打印本页</button>
+          <span id="view-status" data-state="pending"></span>
+        </div>
+
+        {# ---------- attachments ---------- #}
+        <div class="attachments" id="attachments">
+          <h2 class="attachments-title">附件下载</h2>
+          <ul class="attachment-list">
+            {% for item in attachments %}
+            <li class="attachment-item" data-kind="{{ item.kind }}">
+              <img class="attachment-icon" src="{{ item.src }}" alt="{{ item.kind | upper }} 附件" width="32" height="40" loading="lazy" />
+              <a href="{{ item.src }}" class="attachment-name">{{ item.name }}</a>
+              <span class="attachment-size">{{ item.size_text }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        {# ---------- prev / next ---------- #}
+        <nav class="prev-next" aria-label="上一篇下一篇">
+          <p>
+            <span class="prev-next-label">上一篇：</span>
+            <a href="/static/notice" id="prev-notice">{{ notice.prev_title }}</a>
+          </p>
+          <p>
+            <span class="prev-next-label">下一篇：</span>
+            <a href="/static/notice" id="next-notice">{{ notice.next_title }}</a>
+          </p>
+        </nav>
+      </main>
+
+      <aside class="sidebar">
+        <div class="side-block">
+          <h2 class="side-title">相关链接</h2>
+          <ul class="side-links">
+            {% for link in related_links %}
+            <li><a href="/static/notice">{{ link }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="site-footer">
+      <div class="width">
+        <span>{{ notice.department }} — 用于验证采集器的演示通知站点。</span>
+        <span>金额以 {{ notice.currency }} 计。不会产生真实缴费。</span>
+      </div>
+    </footer>
+
+    <script src="/static/shared/notice.js"></script>
+  </body>
+</html>

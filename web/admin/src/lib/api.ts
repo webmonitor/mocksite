@@ -6,65 +6,47 @@
  * render them without re-parsing messages.
  */
 
-export type Price = string
+export type Amount = string
 
-export interface Product {
+export interface Attachment {
   id: string
   name: string
-  brand: string
-  sku: string
-  current_price: Price
-  original_price: Price
-  currency: string
-  rating: Price
-  review_count: number
-  stock_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'preorder'
-  stock_count: number
-  description: string
-  highlights: string[]
-  images: { id: string; alt: string; src: string; color: string }[]
-  variants: { id: string; label: string; kind: 'color' | 'size'; available: boolean }[]
-  specs: { label: string; value: string }[]
+  src: string
+  kind: 'pdf' | 'doc' | 'xls' | 'zip'
+  size_text: string
 }
 
-export interface Item {
+export interface Notice {
   id: string
-  name: string
-  price: Price
-}
-
-export interface Review {
-  id: string
-  author: string
-  rating: number
-  date: string
   title: string
-  body: string
-  verified: boolean
+  department: string
+  doc_no: string
+  category: string
+  current_fee: Amount
+  previous_fee: Amount
+  currency: string
+  /** Single source of truth for the three rendered dates. */
+  published_at: string
+  effective_date: string
+  /** Filled by the page script, like the portal's `_showDynClicks`. */
+  view_count: number
+  status: 'published' | 'withdrawn'
+  body: string[]
+  attachments: Attachment[]
+  prev_title: string
+  next_title: string
 }
 
 export interface BusinessData {
-  product: Product
-  items: Item[]
-  page_size: number
-  reviews: Review[]
-  review_page_size: number
-}
-
-export type FaultKind = 'none' | 'outage'
-
-export interface Faults {
-  kind: FaultKind
-  delay_ms: number
+  notice: Notice
 }
 
 export interface StateDocument {
   revision: number
   business: BusinessData
-  faults: Faults
 }
 
-export type ScenarioGroup = 'baseline' | 'price' | 'content' | 'list' | 'fault'
+export type ScenarioGroup = 'baseline' | 'fee' | 'content'
 
 export interface Scenario {
   name: string
@@ -133,7 +115,7 @@ export class ApiError extends Error {
     return this.status === 401
   }
 
-  /** Field errors keyed by dotted location, e.g. `business.product.name`. */
+  /** Field errors keyed by dotted location, e.g. `business.notice.title`. */
   fieldErrors(): Map<string, string> {
     return new Map(this.errors.map((error) => [error.loc, error.msg]))
   }

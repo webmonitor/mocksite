@@ -132,7 +132,9 @@ export function BusinessEditor({
 
   return (
     <div className="editor">
-      <div className="grid">
+      <fieldset className="group">
+        <legend>标识</legend>
+        <div className="grid">
         <Field label="通知 ID" htmlFor="notice-id" error={errors.get('business.notice.id')}>
           <input
             id="notice-id"
@@ -172,6 +174,12 @@ export function BusinessEditor({
             onChange={(e) => set('category', e.target.value)}
           />
         </Field>
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>金额与日期</legend>
+        <div className="grid">
         <Field
           label="现行标准（十进制字符串）"
           htmlFor="notice-current-fee"
@@ -229,6 +237,12 @@ export function BusinessEditor({
             onChange={(e) => set('effectiveDate', e.target.value)}
           />
         </Field>
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>页面状态</legend>
+        <div className="grid">
         <Field label="状态" htmlFor="notice-status" error={errors.get('business.notice.status')}>
           <select
             id="notice-status"
@@ -252,6 +266,12 @@ export function BusinessEditor({
             onChange={(e) => set('viewCount', e.target.value)}
           />
         </Field>
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>相邻通知</legend>
+        <div className="grid">
         <Field
           label="上一篇标题"
           htmlFor="notice-prev-title"
@@ -275,7 +295,8 @@ export function BusinessEditor({
             onChange={(e) => set('nextTitle', e.target.value)}
           />
         </Field>
-      </div>
+        </div>
+      </fieldset>
 
       <Field
         label="正文（每行一段）"

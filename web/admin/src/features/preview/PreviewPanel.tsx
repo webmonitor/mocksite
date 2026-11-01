@@ -20,9 +20,10 @@ const PREFERRED = ['/static/notice', '/ssr/notice']
  * Rendering the iframe at its container width was wrong: the notice page has
  * a 900px breakpoint, so a narrow panel stacked the fee block *below* the
  * attachment gallery and the fee — the one thing the preview exists to show —
- * was off-screen.
+ * was off-screen. 1024 keeps the two-column layout while scaling less than a
+ * full desktop width would, so the rendered type stays legible in the panel.
  */
-const DESKTOP_WIDTH = 1180
+const DESKTOP_WIDTH = 1024
 
 function orderPages(pages: TargetPage[]): TargetPage[] {
   const rank = (page: TargetPage) => {
@@ -110,9 +111,11 @@ export function PreviewPanel({
       </div>
 
       <div className="preview-meta">
-        <span className="badge">revision {revision}</span>
         {activeScenarioTitle ? (
-          <span className="badge badge-scenario">{activeScenarioTitle}</span>
+          <span className="badge badge-scenario">
+            <i className="lamp" aria-hidden />
+            {activeScenarioTitle}
+          </span>
         ) : (
           <span className="badge badge-manual">手动编辑的状态</span>
         )}

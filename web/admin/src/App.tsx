@@ -109,6 +109,11 @@ export function AdminApp() {
           <span className="topbar-sub">单条通知 · 可控数据 · 实时预览</span>
         </div>
         <div className="actions">
+          {/* The signature: one lamp for the live state and its revision, in mono. */}
+          <span className="readout" title="当前状态版本">
+            <i className="lamp" aria-hidden />
+            revision <strong>{state?.revision ?? '—'}</strong>
+          </span>
           <button type="button" onClick={() => void resource.refresh()} disabled={resource.loading}>
             {resource.loading ? '刷新中…' : '刷新状态'}
           </button>
@@ -117,6 +122,7 @@ export function AdminApp() {
           </button>
           <button
             type="button"
+            className="quiet"
             onClick={() => {
               resource.forget()
               connection.disconnect()
@@ -159,12 +165,10 @@ export function AdminApp() {
               />
             ) : null}
             <dl className="facts">
-              <dt>当前 revision</dt>
-              <dd>{state.revision}</dd>
-              <dt>生效场景</dt>
-              <dd>{activeScenarioTitle ?? '手动编辑的状态'}</dd>
               <dt>现行标准</dt>
-              <dd>{state.business.notice.current_fee}</dd>
+              <dd>
+                {state.business.notice.currency} {state.business.notice.current_fee}
+              </dd>
               <dt>点击次数</dt>
               <dd>{state.business.notice.view_count}</dd>
             </dl>

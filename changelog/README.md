@@ -8,6 +8,7 @@
 
 ## 记录
 
+- [2026-11-01：管理后台视觉重做——石墨台面、单一琥珀信号灯、修订号读数，预览作为标本窗口；字段编辑分组，窄屏横向溢出修复](2026-11-01.md)
 - **2026-10-30：文档整理（仅文档，未运行验证）**
   - 重写 `README.md`、`plan/README.md`、`tests/acceptance/README.md` 与 `mocksite/AGENTS.md`，把手册收敛为当前的单条高校通知、单进程双端口、状态/选择器/API/场景、源码构建（无 GHCR）以及与 WebMonitor-Agent 的接入说明。
   - Agent 接入启动按“默认 `docker compose up -d --wait` 拉公开镜像、源码用 `compose.build.yaml` 覆盖”描述；当前接入改为由 Agent 部署方自行配置共享网络与精准出口白名单，本仓库不再提供 Agent 专用 overlay。普通用户下载部署文件并自行创建 `.env`，不 clone 产品仓库。

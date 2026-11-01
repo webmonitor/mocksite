@@ -88,14 +88,19 @@ export function ScenarioPicker({
             >
               <div className="scenario-card-head">
                 <h3>{scenario.title || scenario.name}</h3>
-                {isActive ? <span className="badge badge-live">当前生效</span> : null}
+                {isActive ? (
+                  <span className="badge badge-live">
+                    <i className="lamp" aria-hidden />
+                    当前生效
+                  </span>
+                ) : null}
               </div>
 
               <p className="scenario-outcome">{scenario.outcome || scenario.description}</p>
 
               {scenario.data_impact ? (
                 <p className="scenario-impact">
-                  <span className="impact-label">数据变化</span>
+                  <span className="impact-label">影响</span>
                   {scenario.data_impact}
                 </p>
               ) : null}
@@ -122,7 +127,6 @@ export function ScenarioPicker({
                 ) : (
                   <button
                     type="button"
-                    className="primary"
                     onClick={() => setPending(scenario.name)}
                     disabled={busy || isActive}
                   >
